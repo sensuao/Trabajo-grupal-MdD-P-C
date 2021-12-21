@@ -1,0 +1,179 @@
+---
+title: "flu"
+author: "Jacinto Domínguez Rull"
+date: "19/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r include=FALSE}
+# Cargamos las librerías
+library(tidyverse)
+library(ggplot2)
+library(caret)
+```
+
+
+### The features in this dataset
+
+You are provided a dataset with 36 columns. The first column respondent_id is a unique and random identifier. The remaining 35 features are described below.
+
+For all binary variables: 0 = No; 1 = Yes.
+
+h1n1_concern - Level of concern about the H1N1 flu.  
+    0 = Not at all concerned; 1 = Not very concerned; 2 = Somewhat concerned; 3 = Very concerned.  
+h1n1_knowledge - Level of knowledge about H1N1 flu.  
+    0 = No knowledge; 1 = A little knowledge; 2 = A lot of knowledge.  
+behavioral_antiviral_meds - Has taken antiviral medications. (binary)  
+behavioral_avoidance - Has avoided close contact with others with flu-like symptoms. (binary)  
+behavioral_face_mask - Has bought a face mask. (binary)  
+behavioral_wash_hands - Has frequently washed hands or used hand sanitizer. (binary)  
+behavioral_large_gatherings - Has reduced time at large gatherings. (binary)  
+behavioral_outside_home - Has reduced contact with people outside of own household. (binary)  
+behavioral_touch_face - Has avoided touching eyes, nose, or mouth. (binary)  
+doctor_recc_h1n1 - H1N1 flu vaccine was recommended by doctor. (binary)  
+doctor_recc_seasonal - Seasonal flu vaccine was recommended by doctor. (binary)  
+chronic_med_condition - Has any of the following chronic medical conditions: asthma or an other lung condition, diabetes, a heart condition, a kidney condition, sickle cell anemia or other anemia, a neurological or neuromuscular condition, a liver condition, or a weakened immune system caused by a chronic illness or by medicines taken for a chronic illness. (binary)  
+child_under_6_months - Has regular close contact with a child under the age of six months. (binary)  
+health_worker - Is a healthcare worker. (binary)  
+health_insurance - Has health insurance. (binary)  
+opinion_h1n1_vacc_effective - Respondent's opinion about H1N1 vaccine effectiveness.  
+    1 = Not at all effective; 2 = Not very effective; 3 = Don't know; 4 = Somewhat effective; 5 = Very effective.  
+opinion_h1n1_risk - Respondent's opinion about risk of getting sick with H1N1 flu without vaccine.  
+    1 = Very Low; 2 = Somewhat low; 3 = Don't know; 4 = Somewhat high; 5 = Very high.  
+opinion_h1n1_sick_from_vacc - Respondent's worry of getting sick from taking H1N1 vaccine.  
+    1 = Not at all worried; 2 = Not very worried; 3 = Don't know; 4 = Somewhat worried; 5 = Very worried.  
+opinion_seas_vacc_effective - Respondent's opinion about seasonal flu vaccine effectiveness.  
+    1 = Not at all effective; 2 = Not very effective; 3 = Don't know; 4 = Somewhat effective; 5 = Very effective.  
+opinion_seas_risk - Respondent's opinion about risk of getting sick with seasonal flu without vaccine.  
+    1 = Very Low; 2 = Somewhat low; 3 = Don't know; 4 = Somewhat high; 5 = Very high.  
+opinion_seas_sick_from_vacc - Respondent's worry of getting sick from taking seasonal flu vaccine.  
+    1 = Not at all worried; 2 = Not very worried; 3 = Don't know; 4 = Somewhat worried; 5 = Very worried.  
+age_group - Age group of respondent.  
+education - Self-reported education level.  
+race - Race of respondent.  
+sex - Sex of respondent.  
+income_poverty - Household annual income of respondent with respect to 2008 Census poverty thresholds.  
+marital_status - Marital status of respondent.  
+rent_or_own - Housing situation of respondent.  
+employment_status - Employment status of respondent.  
+hhs_geo_region - Respondent's residence using a 10-region geographic classification defined by the U.S. Dept. of Health and Human Services. Values are represented as short random character strings.  
+census_msa - Respondent's residence within metropolitan statistical areas (MSA) as defined by the U.S. Census.  
+household_adults - Number of other adults in household, top-coded to 3.  
+household_children - Number of children in household, top-coded to 3.  
+employment_industry - Type of industry respondent is employed in. Values are represented as short random character strings.  
+employment_occupation - Type of occupation of respondent. Values are represented as short random character strings.  
+
+
+
+```{r}
+# Cargamos los datos
+tra_feat = read.csv('training_set_features.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+tra_lab = read.csv('training_set_labels.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+```
+
+
+```{r}
+head(tra_feat)
+str(tra_feat)
+summary(tra_feat)
+# No hay filas repetidas
+sum(duplicated(tra_feat))
+```
+
+Conversión de multietiqueta a multiclase
+
+```{r}
+tra_lab = tra_lab %>% mutate(clase = 2 * h1n1_vaccine + seasonal_vaccine)
+```
+
+
+## Preprocesamiento
+
+### Imputación de valores perdidos
+
+Tenemos valores perdidos en casi todas las variables.
+
+```{r}
+# Valores perdidos
+ratio_nulos = colSums(is.na(tra_feat))/nrow(tra_feat)
+ratio_nulos
+# Las etiquetas están libres de valores perdidos
+sum(is.na(tra_lab))
+
+# Hay columnas con muchos valores perdidos
+
+# Estas columnas no aportan nada
+table(tra_feat$employment_industry)
+table(tra_feat$employment_occupation)
+tra_feat$employment_industry = NULL
+tra_feat$employment_occupation = NULL
+
+# Interpretamos que NA significa nada preocupado (0)
+tra_feat$h1n1_concern[is.na(tra_feat$h1n1_concern)] = 0
+# Interpretamos que NA significa nada de conocimiento (0)
+tra_feat$h1n1_knowledge[is.na(tra_feat$h1n1_knowledge)] = 0
+# Interpretamos que NA significa que prefiere no decir que ha recibido antivirales (1)
+tra_feat$behavioral_antiviral_meds[is.na(tra_feat$behavioral_antiviral_meds)] = 1
+# Interpretamos que NA significa que no ha evitado los contactos (0)
+tra_feat$behavioral_avoidance[is.na(tra_feat$behavioral_avoidance)] = 0
+# Interpretamos que NA significa no ha comprado mascarilla (0)
+tra_feat$behavioral_face_mask[is.na(tra_feat$behavioral_face_mask)] = 0
+# Interpretamos que NA significa que no hace higiene de manos (0)
+tra_feat$behavioral_wash_hands[is.na(tra_feat$behavioral_wash_hands)] = 0
+# Interpretamos que NA significa que no ha reducido el tiempo en grandes reuniones (0)
+tra_feat$behavioral_large_gatherings[is.na(tra_feat$behavioral_large_gatherings)] = 0
+# Interpretamos que NA significa que no ha reducido el contacto con no convivientes (0)
+tra_feat$behavioral_outside_home[is.na(tra_feat$behavioral_outside_home)] = 0
+# Interpretamos que NA significa que no ha evitado tocarse la cara (0)
+tra_feat$behavioral_touch_face[is.na(tra_feat$behavioral_touch_face)] = 0
+# Interpretamos que NA significa que prefiere no decir que ha recibido recomendación del médico (1)
+tra_feat$doctor_recc_h1n1[is.na(tra_feat$doctor_recc_h1n1)] = 1
+# Interpretamos que NA significa que prefiere no decir que ha recibido recomendación del médico (1)
+tra_feat$doctor_recc_seasonal[is.na(tra_feat$doctor_recc_seasonal)] = 1
+# Interpretamos que NA significa que no es persona de riesgo (0)
+tra_feat$chronic_med_condition[is.na(tra_feat$chronic_med_condition)] = 0
+# Interpretamos que NA significa que no tiene contacto estrecho con un bebé (0)
+tra_feat$child_under_6_months[is.na(tra_feat$child_under_6_months)] = 0
+# Interpretamos que NA significa que no es sanitario (0)
+tra_feat$health_worker[is.na(tra_feat$health_worker)] = 0
+# Interpretamos que NA significa que no tiene seguro médico (0)
+tra_feat$health_insurance[is.na(tra_feat$health_insurance)] = 0
+# Interpretamos que NA significa que opina que no es efectiva (1)
+tra_feat$opinion_h1n1_vacc_effective[is.na(tra_feat$opinion_h1n1_vacc_effective)] = 1
+# Interpretamos que NA significa que opina que no tiene riesgo de contagiarse sin estar vacunado (1)
+tra_feat$opinion_h1n1_risk[is.na(tra_feat$opinion_h1n1_risk)] = 1
+# Interpretamos que NA significa que ante la preocupación de los efectos secundarios de la vacuna no sabe (3)
+tra_feat$opinion_h1n1_sick_from_vacc[is.na(tra_feat$opinion_h1n1_sick_from_vacc)] = 3
+# Interpretamos que NA significa que opina que no es efectiva (1)
+tra_feat$opinion_seas_vacc_effective[is.na(tra_feat$opinion_seas_vacc_effective)] = 1
+# Interpretamos que NA significa que opina que no tiene riesgo de contagiarse sin estar vacunado (1)
+tra_feat$opinion_seas_risk[is.na(tra_feat$opinion_seas_risk)] = 1
+# Interpretamos que NA significa que ante la preocupación de los efectos secundarios de la vacuna no sabe (3)
+tra_feat$opinion_seas_sick_from_vacc[is.na(tra_feat$opinion_seas_sick_from_vacc)] = 3
+# Interpretamos que NA significa no tiene estudios
+tra_feat$education[is.na(tra_feat$education)] = "< 12 Years"
+# Interpretamos que NA significa tiene pocos ingresos
+tra_feat$income_poverty[is.na(tra_feat$income_poverty)] = "Below Poverty"
+# Interpretamos que NA significa no está casado/a o está divorciado/a
+tra_feat$marital_status[is.na(tra_feat$marital_status)] = "Not Married"
+# Interpretamos que NA significa no es propietario
+tra_feat$rent_or_own[is.na(tra_feat$rent_or_own)] = "Rent"
+# Interpretamos que NA significa no tiene empleo
+tra_feat$employment_status[is.na(tra_feat$employment_status)] = "Unemployed"
+# Interpretamos que NA significa no convive con adultos
+tra_feat$household_adults[is.na(tra_feat$household_adults)] = 0
+# Interpretamos que NA significa no convive con niños
+tra_feat$household_children[is.na(tra_feat$household_children)] = 0
+
+sum(is.na(tra_feat))
+```
+
+
+
