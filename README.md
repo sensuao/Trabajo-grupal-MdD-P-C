@@ -5,8 +5,18 @@
  
 TO DO LIST
 
-OVA
+-OVA
 
-OVO
+-OVO
 
-Valores nulos
+-Valores nulos
+
+   miss forest
+   
+   mice (multiples)
+   
+   knn imputer
+   
+   noise filter
+   
+   -Valores categóricos de otras formas (aparte del one-hot encoding)
