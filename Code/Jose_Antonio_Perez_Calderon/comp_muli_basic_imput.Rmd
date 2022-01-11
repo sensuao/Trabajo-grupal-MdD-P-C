@@ -1,0 +1,387 @@
+---
+title: "comp_multi_basic_imput"
+author: "José Antonio Pérez Calderón"
+date: "7/1/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+# Cargamos las librerías
+library(tidyverse)
+library(caret)
+library(RWeka)
+library(AUC)
+library(DescTools)
+library(VIM)
+library(MLmetrics)
+```
+
+La descripción de los datos se ha realizado en el archivo comp_binar_basic_imput.Rmd
+
+Leemos los datos
+```{r}
+# Leemos los datos desde fichero
+train_features = read.csv('training_set_features.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+train_labels = read.csv('training_set_labels.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+test_features = read.csv('test_set_features.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+```
+
+Conversión de multietiqueta a multiclase:
+
+Creamos una nueva columna en el dataste train_labels que contiene la codificación multiclase, esto es:
+  * no se pone ninguna vacuna: {0,0} -> 0
+  * no se pone la vacuna h1n1 y sí la seasonal: {0,1} -> 1
+  * sí se pone la vacuna h1n1 y no la seasonal: {1,0} -> 2
+  * se pone ambas vacunas: {1,1} -> 3
+
+```{r}
+train_labels = train_labels %>% mutate(clase = 2 * h1n1_vaccine + seasonal_vaccine)
+```
+
+
+## Preprocesamiento
+
+### Imputación manual de valores perdidos
+
+Realizamos la imputación que mejores resultados nos ha generado en la clasificación binaria
+
+```{r}
+# Eliminamos las dos últimas columnas por falta de aporte
+train_features$employment_industry = NULL
+train_features$employment_occupation = NULL
+
+# Interpretación e imputación de "sin estudios" a los valores NA en la siguiente variable
+train_features$education[is.na(train_features$education)] = "< 12 Years"
+# Interpretación e imputación "bajo pobreza" a los valores perdidos en la siguiente variable
+train_features$income_poverty[is.na(train_features$income_poverty)] = "Below Poverty"
+# Interpretación e imputación "no casado" a los valores perdidos en la siguiente variable
+train_features$marital_status[is.na(train_features$marital_status)] = "Not Married"
+# Interpretación e imputación "por cuenta ajena" a los valores perdidos en la siguiente variable
+train_features$rent_or_own[is.na(train_features$rent_or_own)] = "Rent"
+# Interpretación e imputación "desempleado" a los valores perdidos en la siguiente variable
+train_features$employment_status[is.na(train_features$employment_status)] = "Unemployed"
+# Interpretamos e imputación "no tiene seguro médico" a los valores NA (0)
+train_features$health_insurance[is.na(train_features$health_insurance)] = 0
+
+# Convertimos las variables a factor
+train_features = as.data.frame((lapply(train_features[, -1], as.factor)))
+train_labels = as.data.frame(lapply(train_labels[, -1], as.factor))
+
+# Sustituimos los NAs por la moda
+for (i in 1:dim(train_features)[2]) {
+  train_features[i][is.na(train_features[i])] <- sapply(train_features[i], function(x) Mode(x, na.rm=TRUE))
+}
+```
+
+Realizamos los mismo para los datos de test
+
+```{r}
+# Estas columnas no aportan nada
+test_features$employment_industry = NULL
+test_features$employment_occupation = NULL
+
+test_features$education[is.na(test_features$education)] = "< 12 Years"
+test_features$income_poverty[is.na(test_features$income_poverty)] = "Below Poverty"
+test_features$marital_status[is.na(test_features$marital_status)] = "Not Married"
+test_features$rent_or_own[is.na(test_features$rent_or_own)] = "Rent"
+test_features$employment_status[is.na(test_features$employment_status)] = "Unemployed"
+test_features$health_insurance[is.na(test_features$health_insurance)] = 0
+
+test_features = as.data.frame((lapply(test_features[, -1], as.factor)))
+
+for (i in 1:dim(test_features)[2]) {
+  test_features[i][is.na(test_features[i])] <- sapply(test_features[i], function(x) Mode(x, na.rm=TRUE))
+}
+```
+
+
+Veamos si ahora tenemos valores perdidos y entradas duplicadas
+```{r}
+sum(is.na(train_features))
+sum(is.na(test_features))
+```
+
+Realizamos una adición de columnas con la clase. Añadimos 4 columnas (clase0, clase1, clase2 y clase3) según:
+  * clase0 = 1 si clase = 0
+  * clase1 = 1 si clase = 1
+  * clase2 = 1 si clase = 2
+  * clase3 = 1 si clase = 3
+```{r}
+train_labels = train_labels %>% mutate(clase0 = ifelse(clase == 0, 1, 0),
+                             clase1 = ifelse(clase == 1, 1, 0),
+                             clase2 = ifelse(clase == 2, 1, 0),
+                             clase3 = ifelse(clase == 3, 1, 0))
+```
+
+
+Creamos particiones del 90% para train y el 10% para test
+```{r}
+# tomamos muestras de los índices
+token = sample(dim(train_features)[1])
+# tamamos el valor para partición de train
+train_part = (dim(train_features)[1] * 90) %/% 100
+# realizamos la particion para entrenamiento
+train_features_sample = train_features[token[1:train_part], ]
+# realizamos la particion para las clases de entrenamiento
+train_labels_sample = train_labels[token[1:train_part], ]
+# realizamos la particion para test
+test_features_sample = train_features[token[(train_part+1):dim(train_features)[1]], ]
+# realizamos la particion para las clases de test
+test_labels_sample = train_labels[token[(train_part+1):dim(train_labels)[1]], ]
+```
+
+
+Entrenamos el modelo con las particiones creadas
+```{r}
+control <- trainControl(method="cv", number=10, classProbs= TRUE, summaryFunction = multiClassSummary)
+```
+
+Veamos cómo se comporta el modelo con las particiones creadas
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# Entrenamos el modelo con cross-validation variando el parámetro de complejidad para la poda y tomando split=gini
+model = train(train_features_sample, make.names(train_labels_sample$clase), 
+                method = "rpart",
+                trControl = control,
+                tuneLength = 10)
+model
+model$finalModel
+```
+
+Predecimos para obtener la probabilidad:
+
+```{r}
+# Predecimos para los datos de test particionados
+prediction_prob_class = predict(model, newdata = test_features_sample, type = "prob")
+print("AUC_h1n1: ")
+auc(roc(((prediction_prob_class$X2+prediction_prob_class$X3)+(1-(prediction_prob_class$X0+prediction_prob_class$X1)))/2, test_labels_sample$h1n1_vaccine))
+print("AUC_seasonal: ")
+auc(roc(((prediction_prob_class$X1+prediction_prob_class$X3)+(1-(prediction_prob_class$X0+prediction_prob_class$X2)))/2, test_labels_sample$h1n1_vaccine))
+```
+
+Obtenemos un accuracy de 0.7431606 para h1n1 y de 0.6752186 para seasonal.
+
+Reentrenamos con todos los datos para calcular la probabilidad con los datos de test reales.
+
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# Entrenamos el modelo con cross-validation variando el parámetro de complejidad para la poda y tomando split=gini
+model_class = train(train_features, make.names(train_labels$clase), 
+                method = "rpart",
+                trControl = control,
+                tuneLength = 10)
+model_class
+model_class$finalModel
+```
+
+Predecimos para obtener la probabilidad:
+```{r}
+# Obtenemos la predicción con probabilidad que guardaremos para el archivo submission
+prediction_class_prob = predict(model_class, newdata = test_features, type = "prob")
+```
+
+Preparamos el archivo submission
+```{r}
+submission = read.csv('submission_format.csv', header=TRUE)
+```
+
+Creamos el archivo "submission"  de subida a la plataforma
+
+```{r}
+submission$h1n1_vaccine = (prediction_class_prob$X2+prediction_class_prob$X3)+(1-(prediction_class_prob$X0+prediction_class_prob$X1))
+submission$seasonal_vaccine = (prediction_class_prob$X1+prediction_class_prob$X3)+(1-(prediction_class_prob$X0+prediction_class_prob$X2))
+
+write_csv(submission, "submission_rpart_multi_basic_imput.csv")
+```
+
+La puntuación obtenida en la plataforma es del 0.7528
+
+## OVA
+
+Realizamos un OVA para ver si conseguimos mejorar el modelo
+
+Veamos el comportamiento del modelo con las particiones creadas
+```{r}
+
+control <- trainControl(method="cv", number=10, classProbs= TRUE, summaryFunction = twoClassSummary)
+```
+
+Clase0
+
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+model_class0 = train(train_features_sample, make.names(train_labels_sample$clase0), 
+                method = "rpart",
+                trControl = control,
+                metric = "ROC",
+                tuneLength = 10)
+model_class0
+model_class0$finalModel
+```
+
+
+Predecimos para obtener la probabilidad:
+
+```{r}
+# Predecimos para los datos de test particionados
+prediction_class0_prob = predict(model_class0, newdata = test_features_sample, type = "prob")
+```
+
+
+Clase1
+
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+model_class1 = train(train_features_sample, make.names(train_labels_sample$clase1), 
+                method = "rpart",
+                trControl = control,
+                metric = "ROC",
+                tuneLength = 10)
+model_class1
+model_class1$finalModel
+```
+
+Predecimos para obtener la probabilidad:
+
+```{r}
+# Predecimos para los datos de test particionados
+prediction_class1_prob = predict(model_class1, newdata = test_features_sample, type = "prob")
+```
+
+
+Clase2
+
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+model_class2 = train(train_features_sample, make.names(train_labels_sample$clase2), 
+                method = "rpart",
+                trControl = control,
+                metric = "ROC",
+                tuneLength = 10)
+model_class2
+model_class2$finalModel
+```
+
+Predecimos para obtener la probabilidad:
+
+```{r}
+# Predecimos para los datos de test particionados
+prediction_class2_prob = predict(model_class2, newdata = test_features_sample, type = "prob")
+```
+
+
+Clase3
+
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+model_class3 = train(train_features_sample, make.names(train_labels_sample$clase3), 
+                method = "rpart",
+                trControl = control,
+                metric = "ROC",
+                tuneLength = 10)
+model_class3
+model_class3$finalModel
+```
+
+
+Predecimos para obtener la probabilidad:
+
+```{r}
+# Predecimos para los datos de test particionados
+prediction_class3_prob = predict(model_class3, newdata = test_features_sample, type = "prob")
+```
+
+Realizamos la predicción para las particiones de test
+```{r}
+# Predecimos para los datos de test particionados
+prediction_prob = predict(model, newdata = test_features_sample, type = "prob")
+print("AUC_h1n1: ")
+auc(roc((((prediction_class2_prob$X1+prediction_class3_prob$X1)/2)+((1-(prediction_class0_prob$X1+prediction_class1_prob$X1))/2))/2, test_labels_sample$h1n1_vaccine))
+print("AUC_seasonal: ")
+auc(roc((((prediction_class1_prob$X1+prediction_class3_prob$X1)/2)+((1-(prediction_class0_prob$X1+prediction_class2_prob$X1))/2))/2, test_labels_sample$h1n1_vaccine))
+```
+
+Entrenamos con todos los datos para obtener las probabilidades finales que guardaremos para el archivo submission
+
+Clase0
+
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+model_class0 = train(train_features, make.names(train_labels$clase0), 
+                method = "rpart",
+                trControl = control,
+                metric = "ROC",
+                tuneLength = 10)
+
+prediction_class0_prob = predict(model_class0, newdata = test_features, type = "prob")
+```
+
+Clase1
+
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+model_class1 = train(train_features, make.names(train_labels$clase1), 
+                method = "rpart",
+                trControl = control,
+                metric = "ROC",
+                tuneLength = 10)
+
+prediction_class1_prob = predict(model_class1, newdata = test_features, type = "prob")
+```
+
+Clase2
+
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+model_class2 = train(train_features, make.names(train_labels$clase2), 
+                method = "rpart",
+                trControl = control,
+                metric = "ROC",
+                tuneLength = 10)
+
+prediction_class2_prob = predict(model_class2, newdata = test_features, type = "prob")
+```
+
+Clase3
+
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+model_class3 = train(train_features, make.names(train_labels$clase3), 
+                method = "rpart",
+                trControl = control,
+                metric = "ROC",
+                tuneLength = 10)
+
+prediction_class3_prob = predict(model_class3, newdata = test_features, type = "prob")
+```
+
+```{r}
+submission = read.csv('submission_format.csv', header=TRUE, sep=',')
+```
+
+```{r}
+submission$h1n1_vaccine = (((prediction_class2_prob$X1+prediction_class3_prob$X1)/2)+((1-(prediction_class0_prob$X1+prediction_class1_prob$X1))/2))/2
+submission$seasonal_vaccine = (((prediction_class1_prob$X1+prediction_class3_prob$X1)/2)+((1-(prediction_class0_prob$X1+prediction_class2_prob$X1))/2))/2
+
+write_csv(submission, "submission_rpart_multi_basic_imput_ova.csv")
+```
+
+La puntuación obtenida en la plataforma es del 0.8000
+

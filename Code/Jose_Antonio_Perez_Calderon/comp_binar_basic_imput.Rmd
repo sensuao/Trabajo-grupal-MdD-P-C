@@ -1,0 +1,614 @@
+---
+title: "comp_binar_basic_imput"
+author: "José Antonio Pérez Calderón"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+Se cargan las librerías a utilizar
+```{r}
+library(tidyverse)
+library(caret)
+library(AUC)
+library(DescTools)
+library(knitr)
+library(dplyr)
+```
+
+
+## Descripción del tipo de datos de entrada (lista, data frame, ect., numero de filas, columnas, tipo de datos atómicos, etc.)
+
+Tenemos un dataset con 36 coumnas. La primera columna respondent_id es un identificador único aleatorio. Las demás 35 columnas se describen a continuación:
+
+Para todas las variables binarias: 0 = No; 1 = Sí.
+
+  * h1n1_concern - Nivel de preocupación sobre el virus de la gripe H1N1:
+      * 0 = Para nada preocupado 
+      * 1 = No muy preocupado 
+      * 2 = Algo preocupado 
+      * 3 = Muy preocupado  
+  * h1n1_knowledge - Nivel de conocimiento sobre el virus de la gripe H1N1:
+      * 0 = Sin conocimiento
+      * 1 = Algún conocimineto
+      * 2 = Mucho conocimiento
+  * behavioral_antiviral_meds - Ha tomado medicación antiviral (binaria).  
+  * behavioral_avoidance - Ha evitado el contacto cercano con otras personas con síntomas similares a los de la gripe (binaria).  
+  * behavioral_face_mask - Ha comprado una mascarilla (binaria).
+  * behavioral_wash_hands - Se ha lavado las manos con frecuencia o ha usado desinfectante para manos (binaria).  
+  * behavioral_large_gatherings - Ha reducido el tiempo en reuniones concurridas (binaria).  
+  * behavioral_outside_home - Ha reducido el contacto con personas ajenas al hogar (binaria).  
+  * behavioral_touch_face - Ha evitado tocarse los ojos, la nariz o la boca (binaria).  
+  * doctor_recc_h1n1 - El médico recomendó la vacuna contra la gripe H1N1  (binaria).  
+  * doctor_recc_seasonal - El médico recomendó la vacuna contra la gripe estacional (binaria).
+  * chronic_med_condition - Tiene alguna de las siguientes afecciones médicas crónicas: asma u otra afección pulmonar, diabetes, una afección cardíaca, una afección renal, anemia de      células falciformes u otra anemia, una afección neurológica o neuromuscular, una afección hepática o un sistema inmunológico debilitado causado por una enfermedad crónica o por       medicamentos que se toman para una enfermedad crónica (binaria).  
+  * child_under_6_months - Tiene contacto cercano y regular con un niños menores de seis meses (binaria).  
+  * health_worker - Es un trabajador de la salud (binaria).  
+  * health_insurance - Tiene seguro médico (binaria).
+  * opinion_h1n1_vacc_effective - Opinión de la encuestada sobre la efectividad de la vacuna H1N1: 
+      * 1 = Para nada efectiva
+      * 2 = No muy efectiva
+      * 3 = No sabe
+      * 4 = Algo efectiva
+      * 5 = Muy efectiva.  
+  * opinion_h1n1_risk - Opinión del encuestado sobre el riesgo de contraer la gripe H1N1 sin la vacuna:  
+      * 1 = Muy bajo
+      * 2 = Algo bajo
+      * 3 = No sabe
+      * 4 = Algo alto
+      * 5 = Muy alto  
+  * opinion_h1n1_sick_from_vacc - La preocupación del encuestado de enfermarse por la vacuna contra la gripe H1N1:
+      * 1 = Para nada preocupado
+      * 2 = No muy preocupado
+      * 3 = No sabe
+      * 4 = Algo preocupado
+      * 5 = Muy preocupado  
+  * opinion_seas_vacc_effective - Opinión del encuestado sobre la efectividad de la vacuna contra la gripe estacional:  
+      * 1 = Nada efectiva
+      * 2 = No muy efectiva
+      * 3 = No sabe
+      * 4 = Algo efectiva
+      * 5 = Muy efectiva  
+  * opinion_seas_risk - Opinión de la encuestada sobre el riesgo de contraer la gripe estacional sin vacunarse:  
+      * 1 = Muy bajo
+      * 2 = Algo bajo
+      * 3 = No sabe
+      * 4 = Algo alto
+      * 5 = Muy alto  
+  * opinion_seas_sick_from_vacc - La preocupación del encuestado de enfermarse por recibir la vacuna contra la influenza estacional:  
+      * 1 = Para nada preocupado
+      * 2 = No muy preocupado
+      * 3 = No sabe
+      * 4 = Algo preocupado
+      * 5 = Muy preocupado  
+  * age_group - Grupo de edad del encuestado/a  
+  * education - Nivel de educación.  
+  * race - Raza.
+  * sex - Sexo.  
+  * income_poverty - Ingresos anuales del hogar del encuestado con respecto a los umbrales de pobreza del censo de 2008.  
+  * marital_status - Estado civil.  
+  * rent_or_own - Situación de la vivienda del encuestado/a.  
+  * employment_status- Situación laboral.
+  * hhs_geo_region: la residencia del encuestado utilizando una clasificación geográfica de 10 regiones definida por el Departamento de Salud y Servicios Humanos de EE. UU. Los           valores se representan como cadenas cortas de caracteres aleatorios .   
+  * census_msa - Residencia del encuestado dentro de las áreas estadísticas metropolitanas (MSA) según lo define el censo de EE.UU.  
+  * household_adults - Número de otros adultos en el hogar, codificado en 3.  
+  * household_children - Número de niños en el hogar, codificado en 3.  
+  * employment_industry - Tipo de industria en la que se emplea al encuestado. Los valores se representan como cadenas cortas de caracteres aleatorios.   
+  * employment_occupation - Tipo de ocupación del entrevistado. Los valores se representan como cadenas cortas de caracteres aleatorios.  
+   
+
+# Lectura de datos desde fichero
+
+```{r}
+train_features = read.csv('training_set_features.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+train_labels = read.csv('training_set_labels.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+test_features = read.csv('test_set_features.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+```
+
+## Inspección de los datos
+
+Mostramos las cinco primeras líneas para tener una primera impresión de nuestro dataset de entrenamiento:
+```{r echo=FALSE, results='asis'}
+#visualizamos las cinco primeras líneas de los datos
+head(train_features)
+```
+
+Observamos que hay valores perdidos
+
+Veamos la estructura de los datos
+
+```{r}
+str(train_features)
+```
+tenemos tanto variables enteras como char.
+
+Veamos que todos los datos tienen el mismo número de entradas
+Comprobamos las dimensiones:
+```{r echo=FALSE, results='asis'}
+#longitud de cada columna del dataset
+kable(lengths(train_features), col.names = "Longitud")
+```
+
+Todas las columnas tienen el mismo número de filas.
+
+Veamos una descripción estadística inicial de los datos
+
+```{r}
+summary(train_features)
+```
+Realizamos el mismo procedimiento para los datos de test
+
+```{r}
+head(test_features)
+```
+Se observan también valores perdidos
+```{r}
+str(test_features)
+```
+Veamos si los datos de test tienen el mismo número de entradas
+```{r echo=FALSE, results='asis'}
+#longitud de cada columna del dataset
+kable(lengths(test_features), col.names = "Longitud")
+```
+
+```{r}
+summary(test_features)
+```
+
+Vemos que nuestros datos tienen muchos valores perdidos. Hay valores perdidos en casi cada variable
+
+
+```{r}
+# Comprobamos donde están esos valores perdidos en datos de train
+miss_train <- train_features %>% summarise_all(funs(sum(is.na(.))))
+miss_train
+```
+Veamos la ratio de valores perdidos en cada variable
+```{r}
+# Valores perdidos en datos de train
+ratio_nulos_train = colSums(is.na(train_features))/nrow(train_features)
+ratio_nulos_train
+```
+Hay columnas como employment_industry o employment_occupation que tienen un 50% de valores perdidos.
+
+Veamos si tenemos instancias repetidas
+```{r}
+# Veamos si hay filas repetidas en datos de train
+duplicated(train_features)
+sum(duplicated(train_features))
+```
+No hay instancias repetidas en los datos de entrenamiento.
+
+Veamos los valores perdidos en los datos de test
+
+```{r}
+# Comprobamos donde están esos valores perdidos en datos de test
+miss <- test_features %>% summarise_all(funs(sum(is.na(.))))
+miss
+```
+Veamos la ratio de valores perdidos en cada variable de los datos de test
+
+```{r}
+# Valores perdidos en datos de train
+ratio_nulos = colSums(is.na(test_features))/nrow(test_features)
+ratio_nulos
+```
+De nuevo, las columnas como employment_industry o employment_occupation que tienen un 50% de valores perdidos.
+
+Veamos si tenemos instancias duplicadas
+```{r}
+# Veamos si hay filas repetidas en datos de test
+duplicated(test_features)
+sum(duplicated(test_features))
+```
+No existen intancias duplicadas en los datos de test.
+
+## Preprocesamiento
+
+### Imputación manual de valores perdidos
+
+Lo primero será eliminar las variables employment_industry o employment_occupation ya que tienen un 50% de valores perdidos.
+```{r}
+# Eliminamos las dos últimas columnas por falta de aporte
+train_features$employment_industry = NULL
+train_features$employment_occupation = NULL
+```
+
+Haremos una primera imputación basándonos en conclusiones humanas que en este caso puede ser interesante debido a que estamos trabajando con una encuesta.
+```{r}
+# Interpretación e imputación de "sin estudios" a los valores NA en la siguiente variable
+train_features$education[is.na(train_features$education)] = "< 12 Years"
+# Interpretación e imputación "bajo pobreza" a los valores perdidos en la siguiente variable
+train_features$income_poverty[is.na(train_features$income_poverty)] = "Below Poverty"
+# Interpretación e imputación "no casado" a los valores perdidos en la siguiente variable
+train_features$marital_status[is.na(train_features$marital_status)] = "Not Married"
+# Interpretación e imputación "por cuenta ajena" a los valores perdidos en la siguiente variable
+train_features$rent_or_own[is.na(train_features$rent_or_own)] = "Rent"
+# Interpretación e imputación "desempleado" a los valores perdidos en la siguiente variable
+train_features$employment_status[is.na(train_features$employment_status)] = "Unemployed"
+# Interpretamos e imputación "no tiene seguro médico" a los valores NA (0)
+train_features$health_insurance[is.na(train_features$health_insurance)] = 0
+```
+
+Convertimos los datos de entrenamiento a factor para su posterior uso
+```{r}
+# Convertimos las variables a factor
+train_features = as.data.frame((lapply(train_features[, -1], as.factor)))
+train_labels = as.data.frame(lapply(train_labels[, -1], as.factor))
+```
+
+Una vez imputados los valores que se han considerados susceptibles de interpretación humana imputamos el resto de valores con la moda.
+```{r}
+# Sustituimos los NAs por la moda
+for (i in 1:length(train_features)) {
+  train_features[i][is.na(train_features[i])] <- sapply(train_features[i], function(x) Mode(x, na.rm=TRUE))
+}
+```
+
+Realizamos los mismo para los datos de test
+
+```{r}
+# Eliminamos las dos últimas columnas por falta de aporte
+test_features$employment_industry = NULL
+test_features$employment_occupation = NULL
+
+test_features$education[is.na(test_features$education)] = "< 12 Years"
+test_features$income_poverty[is.na(test_features$income_poverty)] = "Below Poverty"
+test_features$marital_status[is.na(test_features$marital_status)] = "Not Married"
+test_features$rent_or_own[is.na(test_features$rent_or_own)] = "Rent"
+test_features$employment_status[is.na(test_features$employment_status)] = "Unemployed"
+test_features$health_insurance[is.na(test_features$health_insurance)] = 0
+
+test_features = as.data.frame((lapply(test_features[, -1], as.factor)))
+
+for (i in 1:dim(test_features)[2]) {
+  test_features[i][is.na(test_features[i])] <- sapply(test_features[i], function(x) Mode(x, na.rm=TRUE))
+}
+```
+
+Veamos si ahora tenemos valores perdidos:
+```{r}
+sum(is.na(train_features))
+sum(is.na(test_features))
+```
+
+Creamos particiones del 90% para entrenamiento y el 10% para test
+```{r}
+# tomamos muestras de los índices
+token = sample(dim(train_features)[1])
+# tamamos el valor para partición de train
+train_part = (dim(train_features)[1] * 90) %/% 100
+# realizamos la particion para entrenamiento
+train_features_sample = train_features[token[1:train_part], ]
+# realizamos la particion para las clases de entrenamiento
+train_labels_sample = train_labels[token[1:train_part], ]
+# realizamos la particion para test
+test_features_sample = train_features[token[(train_part+1):dim(train_features)[1]], ]
+# realizamos la particion para las clases de test
+test_labels_sample = train_labels[token[(train_part+1):dim(train_labels)[1]], ]
+```
+
+Entrenamos el modelo con las particiones creadas
+```{r}
+control <- trainControl(method="cv", number = 10)
+```
+
+Veamos el comportamiento del modelo para la clase hin1_vaccine con las particiones creadas
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# Entrenamos el modelo con cross-validation variando el parámetro de complejidad para la poda y tomando split=gini
+model_h1n1 = train(train_features_sample, train_labels_sample$h1n1_vaccine, method = "rpart", trControl = control, tuneLength = 10)
+model_h1n1
+model_h1n1$finalModel
+```
+
+Vemos que el valor del parámetro de complejidad, que determina la profundidad del árbol, con el que se obtiene un mejor resultado es cp = 0.00204161.
+Esto es, el árbol que se obtiene tiene una profundidad considerable.
+
+Veamos como se comporta el algoritmo en función de este parámetro con un gráfico:
+
+```{r}
+# gráfico para mostrar la evolución de la predicción en función del parámetro de complejidad
+plot(model_h1n1)
+```
+
+Realizamos la predicción:
+```{r}
+# Predecimos para los datos de test particionados
+prediction_h1n1 = predict(model_h1n1, newdata = test_features_sample)
+# Obtenemos el accuracy y el kappa
+postResample(pred = prediction_h1n1, obs = test_labels_sample$h1n1_vaccine)
+# Veamos la matriz de confusión y los resultados
+confusionMatrix(table(prediction_h1n1,test_labels_sample$h1n1_vaccine))
+# Predecimos de nuevo obteniendo la probabilidad
+prediction_h1n1_prob = predict(model_h1n1, newdata = test_features_sample, type = "prob")
+print("AUC: ")
+auc(roc(prediction_h1n1_prob$`1`, test_labels_sample$h1n1_vaccine))
+```
+Obtenemos un accuracy de 0.7834197 para h1n1
+
+Veamos el comportamiento del modelo para la clase de seasonal_vaccine con las particiones creadas
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# Entrenamos el modelo con cross-validation variando el parámetro de complejidad para la poda y tomando split=gini
+model_seasonal = train(train_features_sample, train_labels_sample$seasonal_vaccine,
+                method = "rpart",
+                trControl = control,
+                tuneLength = 10)
+model_seasonal
+model_seasonal$finalModel
+```
+
+Vemos que el valor del parámetro de complejidad, que determina la profundidad del árbol, con el que se obtiene un mejor resultado es cp = 0.001380846.
+Esto es, el árbol que se obtiene tiene una profundidad aúm mayor que en el caso anterior.
+
+Veamos como se comporta el algoritmo en función de este parámetro con un gráfico:
+
+```{r}
+# gráfico para mostrar la evolución de la predicción en función del parámetro de complejidad
+plot(model_seasonal)
+```
+
+```{r}
+# Predecimos para los datos de test particionados
+prediction_seasonal = predict(model_seasonal, newdata = test_features_sample)
+# Obtenemos el accuracy y el kappa
+postResample(pred = prediction_seasonal, obs = test_labels_sample$seasonal_vaccine)
+# Veamos la matriz de confusión y los resultados
+confusionMatrix(table(prediction_seasonal,test_labels_sample$seasonal_vaccine))
+# Predecimos de nuevo obteniendo la probabilidad
+prediction_seasonal_prob = predict(model_seasonal, newdata = test_features_sample, type = "prob")
+print("AUC: ")
+auc(roc(prediction_seasonal_prob$`1`, test_labels_sample$seasonal_vaccine))
+```
+Obtenemos un accuracy de 0.8022633 para seasonal
+
+Reentrenamos con todos los datos para calcular la probabilidad con los datos de test reales.
+
+Lo hacemos primero para h1n1_vaccine:
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# Entrenamos el modelo con cross-validation variando el parámetro de complejidad para la poda y tomando split=gini
+model_h1n1 = train(train_features, train_labels$h1n1_vaccine,
+                method = "rpart",
+                trControl = control,
+                tuneLength = 10)
+model_h1n1
+model_h1n1$finalModel
+```
+
+De nuevo obtenemos los mejores resultados con valores de cp alrededor de 0.002.
+
+Veamos el comportamiento con un gráfico:
+```{r}
+# gráfico para mostrar la evolución de la predicción en función del parámetro de complejidad
+plot(model_h1n1)
+```
+Veamos la matriz de confusión y los resultados:
+```{r}
+confusionMatrix(model_h1n1)
+```
+Obtenemos un accuracy de 0.8446 para h1n1
+
+Predecimos para obtener la probabilidad:
+```{r}
+# Obtenemos la predicción con probabilidad que guardaremos para el archivo submission
+prediction_h1n1 = predict(model_h1n1, newdata = test_features, type = "prob")
+```
+
+Lo hacemos ahora para seasonal_vaccine:
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# Entrenamos el modelo con cross-validation variando el parámetro de complejidad para la poda y tomando split=gini
+model_seasonal = train(train_features, train_labels$seasonal_vaccine,
+                method = "rpart",
+                trControl = control,
+                tuneLength = 10)
+model_seasonal
+model_seasonal$finalModel
+```
+De nuevo obtenemos los mejores resultados con valores de cp alrededor de 0.001.
+
+Veamos el comportamiento con un gráfico:
+```{r}
+# gráfico para mostrar la evolución de la predicción en función del parámetro de complejidad
+plot(model_seasonal)
+```
+
+Veamos la matriz de confusión y los resultados:
+```{r}
+confusionMatrix(model_seasonal)
+```
+Obtenemos un accuracy de 0.7605 para seasonal
+
+Predecimos para obtener la probabilidad:
+```{r}
+# Obtenemos la predicción con probabilidad que guardaremos para el archivo submission
+prediction_seasonal = predict(model_seasonal, newdata = test_features, type = "prob")
+```
+
+Preparamos el archivo submission
+```{r}
+submission = read.csv('submission_format.csv', header=TRUE)
+```
+
+Creamos el archivo "submission"  de subida a la plataforma
+```{r}
+submission$h1n1_vaccine = prediction_h1n1$`1`
+submission$seasonal_vaccine = prediction_seasonal$`1`
+
+write_csv(submission, "submission_rpart_bin_basic_imput.csv")
+```
+
+La puntuación obtenida en la plataforma es del 0.7922
+
+## Ensemble
+
+Vamos a crear un ensemble con una iteración en el número de árboles para comporbar si conseguimos una mejora en la predicción de algoritmo.
+```{r}
+control <- trainControl(method="cv", number=10, classProbs= TRUE, summaryFunction = twoClassSummary)
+```
+
+Veamos con la hin1_vaccine para las particones creadas
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# n_tree: Número de árboles
+n = c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200)
+acc <- list()
+for (n_tree in n) {
+  # creamos un dataframe para guardar las probabilidades obtenidas
+  prediction_h1n1_prob = data.frame(X0 = rep(0.0, dim(test_features_sample)[1]), X1 = rep(0.0, dim(test_features_sample)[1]))
+  # creamos un índice para las particiones
+  part = (dim(train_features_sample)[1] * 5) %/% 100
+  for (i in 1:n_tree){
+    token = sample(dim(train_features_sample)[1])
+    # feature_index = raíz(número de atributos)
+    feature_index = sample(length(colnames(train_features_sample)), 6)
+    # entrenamos
+    model_h1n1_i = train(train_features_sample[token[1:part], feature_index], make.names(train_labels_sample[token[1:part], 1]),
+                    method = "rpart",
+                    metric = "ROC",
+                    trControl = control,
+                    tuneLength = 10)
+    # calculamos las probabilidades individuales
+    prediction_h1n1_prob_i = predict(model_h1n1_i, newdata = test_features_sample, type = "prob")
+    # sumamos las probabilidades
+    prediction_h1n1_prob = prediction_h1n1_prob + (prediction_h1n1_prob_i / n_tree)
+  }
+  # mostramos la precisión
+  cat("AUC",n_tree,":", auc(roc(prediction_h1n1_prob$X1, test_labels_sample$h1n1_vaccine)), "\n")
+  acc <- append(acc, auc(roc(prediction_h1n1_prob$X1, test_labels_sample$h1n1_vaccine)))
+df <- data_frame("n"= n, "Accuracy_h1n1" = acc)
+}
+```
+
+```{r}
+plot(df)
+```
+No observamos que tienda a estabilizarse el número de árboles, al menos con estas cantidades.
+Vemos que el mejor resultado se ha obtenido con un ensemble de 190 árboles y es de 0.8466. Utilizaremos este número de árboles para la predicción real con los datos de test para la clase h1n1_vaccine
+
+Veamos con la seasonal_vaccine para las particiones creadas
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# n_tree: Número de árboles
+n = c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200)
+acc1 <- list()
+for (n_tree in n) {
+  # creamos un dataframe para guardar las probabilidades obtenidas
+  prediction_seasonal_prob = data.frame(X0 = rep(0.0, dim(test_features_sample)[1]), X1 = rep(0.0, dim(test_features_sample)[1]))
+  # creamos un índice para las particiones
+  part = (dim(train_features_sample)[1] * 5) %/% 100
+  for (i in 1:n_tree){
+    token = sample(dim(train_features_sample)[1])
+    # feature_index = raíz(número de atributos)
+    feature_index = sample(length(colnames(train_features_sample)), 6)
+    # entrenamos
+    model_seasonal_i = train(train_features_sample[token[1:part], feature_index], make.names(train_labels_sample[token[1:part], 2]),
+                  method = "rpart",
+                  metric = "ROC",
+                  trControl = control,
+                  tuneLength = 10)
+    # calculamos las probabilidades individuales
+    prediction_seasonal_prob_i = predict(model_seasonal_i, newdata = test_features_sample, type = "prob")
+    # sumamos las probabilidades
+    prediction_seasonal_prob = prediction_seasonal_prob + (prediction_seasonal_prob_i / n_tree)
+  }
+  # mostramos la precisión
+  cat("AUC",n_tree,":", auc(roc(prediction_seasonal_prob$X1, test_labels_sample$seasonal_vaccine)), "\n")
+  acc1 <- append(acc1, auc(roc(prediction_seasonal_prob$X1, test_labels_sample$seasonal_vaccine)))
+  }
+```
+Vemos que el mejor resultado se ha obtenido con un ensemble de 150 árboles y es de 0.84798. Utilizaremos este número de árboles para la predicción real con los datos de test para la clase seasonal_vaccine.
+
+```{r}
+df <- data_frame(df, "Accuracy_seasonal" = acc1)
+plot(df$n, df$Accuracy_seasonal)
+```
+No observamos que tienda a estabilizarse el número de árboles, al menos con estas cantidades.
+
+
+Entrenamos con todos los datos para obtener las probabilidades finales que guardaremos para el archivo submission
+
+Veamos el comportamiento del ensemble de algoritmos para la hin1_vaccine
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# n_tree: Número de árboles
+n_tree = 190
+# creamos un dataframe para guardar las probabilidades obtenidas
+prediction_h1n1_prob = data.frame(X0 = rep(0.0, dim(test_features)[1]), X1 = rep(0.0, dim(test_features)[1]))
+# creamos un índice para las particiones
+part = (dim(train_features)[1] * 5) %/% 100
+for (i in 1:n_tree){
+  token = sample(dim(train_features)[1])
+  # feature_index = raíz(número de atributos)
+  feature_index = sample(length(colnames(train_features)), 6)
+  # entrenamos
+  model_h1n1_i = train(train_features[token[1:part], feature_index], make.names(train_labels[token[1:part], 1]),
+                  method = "rpart",
+                  metric = "ROC",
+                  trControl = control,
+                  tuneLength = 10)
+  # calculamos las probabilidades individuales
+  prediction_h1n1_prob_i = predict(model_h1n1_i, newdata = test_features, type = "prob")
+  # sumamos las probabilidades
+  prediction_h1n1_prob = prediction_h1n1_prob + (prediction_h1n1_prob_i / n_tree)
+}
+```
+
+Veamos el comportamiento del ensemble de algoritmos para la seasonal_vaccine
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# n_tree: Número de árboles
+n_tree = 150
+# creamos un dataframe para guardar las probabilidades obtenidas
+prediction_seasonal_prob = data.frame(X0 = rep(0.0, dim(test_features)[1]), X1 = rep(0.0, dim(test_features)[1]))
+# creamos un índice para las particiones
+part = (dim(train_features)[1] * 5) %/% 100
+for (i in 1:n_tree){
+  token = sample(dim(train_features)[1])
+  # feature_index = raíz(número de atributos)
+  feature_index = sample(length(colnames(train_features)), 6)
+  # entrenamos
+  model_seasonal_i = train(train_features[token[1:part], feature_index], make.names(train_labels[token[1:part], 2]),
+                  method = "rpart",
+                  metric = "ROC",
+                  trControl = control,
+                  tuneLength = 10)
+  # calculamos las probabilidades individuales
+  prediction_seasonal_prob_i = predict(model_seasonal_i, newdata = test_features, type = "prob")
+  # sumamos las probabilidades
+  prediction_seasonal_prob = prediction_seasonal_prob + (prediction_seasonal_prob_i / n_tree)
+}
+```
+
+Preparamos el archivo submission
+```{r}
+submission = read.csv('submission_format.csv', header=TRUE, sep=',')
+```
+
+Creamos el archivo "submission"  de subida a la plataforma
+```{r}
+submission$h1n1_vaccine = prediction_h1n1_prob$X1
+submission$seasonal_vaccine = prediction_seasonal_prob$X1
+
+write_csv(submission, "submission_rpart_bin_basic_imput_ensemble.csv")
+```
+
+La puntuación obtenida en la plataforma es del 0.8254
+

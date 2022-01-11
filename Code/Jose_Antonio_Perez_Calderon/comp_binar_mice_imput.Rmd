@@ -1,0 +1,381 @@
+---
+title: "comp_binar_mice_imput"
+author: "José Antonio Pérez Calderón"
+date: "6/1/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Con este código reliazaremos el mismo procedimiento que en el código comp_binar_basic_imput, pero realizando una imputación de valores perdidos diferente. En este caso la imputación de valores perdidos se realizará mediante el algoritmo mice.
+
+Cargamos las librerías a utilizar
+```{r include=FALSE}
+# Cargamos las librerías
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(RWeka)
+library(AUC)
+library(DescTools)
+library(VIM)
+library(mice)
+```
+
+La descripción de los datos se ha realizado en el archivo comp_binar_basic_imput.Rmd
+
+Leemos los datos ya preprocesados con imputación de valores perdidos mediante mice
+```{r}
+# Leemos los datos desde fichero
+train_features = read.csv('X_train_noNAmice.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+train_labels = read.csv('training_set_labels.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+test_features = read.csv('X_test_noNAmice.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+```
+
+
+Eliminamos las variables que han empeorado todos los modelos probados hasta ahora y convertimos a factor
+
+```{r}
+# Eliminamos las variables mencionadas
+train_features$employment_industry = NULL
+train_features$employment_occupation = NULL
+test_features$employment_industry = NULL
+test_features$employment_occupation = NULL
+# convertimos a factor sin incluir la primera columna que es la identificación de cada encuestado
+test_features = as.data.frame((lapply(test_features[,], as.factor)))
+train_features = as.data.frame((lapply(train_features[,], as.factor)))
+train_labels = as.data.frame(lapply(train_labels[, -1], as.factor))
+```
+
+Renombramos las variables de datos por comodidad
+```{r}
+train_features_mice_imput <- train_features
+test_features_mice_imput <- test_features
+```
+
+Veamos si ahora tenemos valores perdidos y entradas duplicadas
+```{r}
+sum(is.na(train_features_mice_imput))
+sum(is.na(test_features_mice_imput))
+```
+
+Creamos particiones del 90% para train y el 10% para test
+```{r}
+# tomamos muestras de los índices
+token = sample(dim(train_features_mice_imput)[1])
+# tomamos el valor para partición de train
+train_part = (dim(train_features_mice_imput)[1] * 90) %/% 100
+# realizamos la particion para entrenamiento
+train_features_mice_imput_sample = train_features_mice_imput[token[1:train_part], ]
+# realizamos la particion para las clases de entrenamiento
+train_labels_mice_imput_sample = train_labels[token[1:train_part], ]
+# realizamos la particion para test
+test_features_mice_imput_sample = train_features_mice_imput[token[(train_part+1):dim(train_features_mice_imput)[1]], ]
+# realizamos la particion para las clases de test
+test_labels_mice_imput_sample = train_labels[token[(train_part+1):dim(train_labels)[1]], ]
+```
+
+Entrenamos el modelo con las particiones
+```{r}
+control <- trainControl(method="cv", number = 10)
+```
+
+Veamos el comportamiento del modelo para la clase hin1_vaccine con las particiones creadas
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# Entrenamos el modelo con cross-validation variando el parámetro de complejidad para la poda y tomando split=gini
+model_h1n1 = train(train_features_mice_imput_sample, train_labels_mice_imput_sample$h1n1_vaccine,
+                method = "rpart",
+                trControl = control,
+                tuneLength = 10)
+model_h1n1
+model_h1n1$finalModel
+```
+Vemos que el valor del parámetro de complejidad, que determina la profundidad del árbol, con el que se obtiene un mejor resultado es cp = 0.001575113.
+Esto es, el árbol que se obtiene tiene una profundidad considerable.
+
+Veamos como se comporta el algoritmo en función de este parámetro con un gráfico:
+```{r}
+# gráfico para mostrar la evolución de la predicción en función del parámetro de complejidad
+plot(model_h1n1)
+```
+
+Realizamos la predicción:
+```{r}
+# Predecimos para los datos de test particionados
+prediction_h1n1 = predict(model_h1n1, newdata = test_features_mice_imput_sample)
+# Obtenemos el accuracy y el kappa
+postResample(pred = prediction_h1n1, obs = test_labels_mice_imput_sample$h1n1_vaccine)
+# Veamos la matriz de confusión y los resultados
+confusionMatrix(table(prediction_h1n1,test_labels_mice_imput_sample$h1n1_vaccine))
+# Predecimos de nuevo obteniendo la probabilidad
+prediction_h1n1_prob = predict(model_h1n1, newdata = test_features_mice_imput_sample, type = "prob")
+print("AUC: ")
+auc(roc(prediction_h1n1_prob$`1`, test_labels_mice_imput_sample$h1n1_vaccine))
+```
+
+Obtenemos un accuracy de 0.7759419 para h1n1
+
+Veamos el comportamiento del modelo para la clase de seasonal_vaccine con las particiones creadas
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# Entrenamos el modelo con cross-validation variando el parámetro de complejidad para la poda y tomando split=gini
+model_seasonal = train(train_features_mice_imput_sample, train_labels_mice_imput_sample$seasonal_vaccine,
+                method = "rpart",
+                trControl = control,
+                tuneLength = 10)
+model_seasonal
+model_seasonal$finalModel
+```
+
+Vemos que el valor del parámetro de complejidad, que determina la profundidad del árbol, con el que se obtiene un mejor resultado es cp = 0.002682164.
+Esto es, el árbol que se obtiene tiene una profundidad aúm mayor que en el caso anterior.
+
+Veamos como se comporta el algoritmo en función de este parámetro con un gráfico:
+
+```{r}
+# gráfico para mostrar la evolución de la predicción en función del parámetro de complejidad
+plot(model_seasonal)
+```
+
+```{r}
+# Predecimos para los datos de test particionados
+prediction_seasonal = predict(model_seasonal, newdata = test_features_mice_imput_sample)
+# Obtenemos el accuracy y el kappa
+postResample(pred = prediction_seasonal, obs = test_labels_mice_imput_sample$seasonal_vaccine)
+# Veamos la matriz de confusión y los resultados
+confusionMatrix(table(prediction_seasonal,test_labels_mice_imput_sample$seasonal_vaccine))
+# Predecimos de nuevo obteniendo la probabilidad
+prediction_seasonal_prob = predict(model_seasonal, newdata = test_features_mice_imput_sample, type = "prob")
+print("AUC: ")
+auc(roc(prediction_seasonal_prob$`1`, test_labels_mice_imput_sample$seasonal_vaccine))
+```
+
+Obtenemos un accuracy de 0.7980172 para seasonal
+
+Reentrenamos con todos los datos para calcular la probabilidad con los datos de test reales
+
+Veamos el modelo para la clase hin1_vaccine 
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# Entrenamos el modelo con cross-validation variando el parámetro de complejidad para la poda y tomando split=gini
+model_h1n1 = train(train_features_mice_imput, train_labels$h1n1_vaccine,
+                method = "rpart",
+                trControl = control,
+                tuneLength = 10)
+model_h1n1
+model_h1n1$finalModel
+```
+
+De nuevo obtenemos los mejores resultados con valores de cp alrededor de 0.001.
+
+Veamos el comportamiento con un gráfico:
+```{r}
+# gráfico para mostrar la evolución de la predicción en función del parámetro de complejidad
+plot(model_h1n1)
+```
+
+Veamos la matriz de confusión y los resultados:
+```{r}
+confusionMatrix(model_h1n1)
+```
+
+Obtenemos un accuracy de 0.8244 para h1n1
+
+Predecimos para obtener la probabilidad:
+```{r}
+# Obtenemos la predicción con probabilidad que guardaremos para el archivo submission
+prediction_h1n1 = predict(model_h1n1, newdata = test_features_mice_imput, type = "prob")
+```
+
+Lo hacemos ahora para seasonal_vaccine:
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# Entrenamos el modelo con cross-validation variando el parámetro de complejidad para la poda y tomando split=gini
+model_seasonal = train(train_features_mice_imput, train_labels$seasonal_vaccine,
+                method = "rpart",
+                trControl = control,
+                tuneLength = 10)
+model_seasonal
+model_seasonal$finalModel
+```
+
+De nuevo obtenemos los mejores resultados con valores de cp alrededor de 0.002.
+
+Veamos el comportamiento con un gráfico:
+```{r}
+# gráfico para mostrar la evolución de la predicción en función del parámetro de complejidad
+plot(model_seasonal)
+```
+
+Veamos la matriz de confusión y los resultados:
+```{r}
+confusionMatrix(model_seasonal)
+```
+Obtenemos un accuracy de 0.7568 para seasonal
+
+Predecimos para obtener la probabilidad:
+```{r}
+# Obtenemos la predicción con probabilidad que guardaremos para el archivo submission
+prediction_seasonal = predict(model_seasonal, newdata = test_features_mice_imput, type = "prob")
+```
+
+Preparamos el archivo submission
+```{r}
+submission = read.csv('submission_format.csv', header=TRUE)
+```
+
+Creamos el archivo "submission"  de subida a la plataforma
+```{r}
+submission$h1n1_vaccine = prediction_h1n1$`1`
+submission$seasonal_vaccine = prediction_seasonal$`1`
+
+write_csv(submission, "submission_rpart_bin_mice_imput.csv")
+```
+
+La puntuación obtenida en la plataforma es del 0.7836
+
+## Ensemble
+
+```{r}
+ctrl <- trainControl(method="cv", number=10, classProbs= TRUE, summaryFunction = twoClassSummary)
+```
+
+Veamos con la hin1_vaccine para las particiones creadas
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# n_tree: Número de árboles
+n_tree = 190
+# creamos un dataframe para guardar las probabilidades obtenidas
+prediction_h1n1_prob = data.frame(X0 = rep(0.0, dim(test_features_mice_imput_sample)[1]), X1 = rep(0.0, dim(test_features_mice_imput_sample)[1]))
+# creamos un índice para las particiones
+part = (dim(train_features_mice_imput_sample)[1] * 5) %/% 100
+for (i in 1:n_tree){
+  token = sample(dim(train_features_mice_imput_sample)[1])
+  # feature_index = raíz(número de atributos)
+  ind_feat = sample(length(colnames(train_features_mice_imput_sample)), 6)
+  # entrenamos
+  model_h1n1_i = train(train_features_mice_imput_sample[token[1:part], ind_feat], make.names(train_labels_mice_imput_sample[token[1:part], 1]),
+                  method = "rpart",
+                  metric = "ROC",
+                  trControl = ctrl,
+                  tuneLength = 10)
+  # calculamos las probabilidades individuales
+  prediction_h1n1_prob_i = predict(model_h1n1_i, newdata = test_features_mice_imput_sample, type = "prob")
+  # sumamos las probabilidades
+  prediction_h1n1_prob = prediction_h1n1_prob + (prediction_h1n1_prob_i / n_tree)
+}
+# mostramos la precisión
+cat("AUC:", auc(roc(prediction_h1n1_prob$X1, test_labels_mice_imput_sample$h1n1_vaccine)))
+```
+
+Veamos con la seasonal_vaccine para las particiones creadas
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# n_tree: Número de árboles
+n_tree = 150
+# creamos un dataframe para guardar las probabilidades obtenidas
+prediction_seasonal_prob = data.frame(X0 = rep(0.0, dim(test_features_mice_imput_sample)[1]), X1 = rep(0.0, dim(test_features_mice_imput_sample)[1]))
+# creamos un índice para las particiones
+part = (dim(train_features_mice_imput_sample)[1] * 5) %/% 100
+for (i in 1:n_tree){
+  token = sample(dim(train_features_mice_imput_sample)[1])
+  # feature_index = raíz(número de atributos)
+  ind_feat = sample(length(colnames(train_features_mice_imput_sample)), 6)
+  # entrenamos
+  model_seasonal_i = train(train_features_mice_imput_sample[token[1:part], ind_feat], make.names(train_labels_mice_imput_sample[token[1:part], 2]),
+                  method = "rpart",
+                  metric = "ROC",
+                  trControl = ctrl,
+                  tuneLength = 10)
+  # calculamos las probabilidades individuale
+  prediction_seasonal_prob_i = predict(model_seasonal_i, newdata = test_features_mice_imput_sample, type = "prob")
+  # sumamos las probabilidades
+  prediction_seasonal_prob = prediction_seasonal_prob + (prediction_seasonal_prob_i / n_tree)
+}
+# mostramos la precisión
+cat("AUC:", auc(roc(prediction_seasonal_prob$X1, test_labels_mice_imput_sample$seasonal_vaccine)))
+```
+
+Entrenamos con todos los datos para obtener las probabilidades finales que guardaremos para el archivo submission
+
+Veamos el comportamiento del ensemble de algoritmos para la hin1_vaccine
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# n_tree: Número de árboles
+n_tree = 190
+# creamos un dataframe para guardar las probabilidades obtenidas
+prediction_h1n1_prob = data.frame(X0 = rep(0.0, dim(test_features_mice_imput)[1]), X1 = rep(0.0, dim(test_features_mice_imput)[1]))
+# creamos un índice para las particiones
+part = (dim(train_features_mice_imput)[1] * 5) %/% 100
+for (i in 1:n_tree){
+  token = sample(dim(train_features_mice_imput)[1])
+  # feature_index = raíz(número de atributos)
+  ind_feat = sample(length(colnames(train_features_mice_imput)), 6)
+  # entrenamos
+  model_h1n1_i = train(train_features_mice_imput[token[1:part], ind_feat], make.names(train_labels[token[1:part], 1]),
+                  method = "rpart",
+                  metric = "ROC",
+                  trControl = ctrl,
+                  tuneLength = 10)
+  # calculamos las probabilidades individuales
+  prediction_h1n1_prob_i = predict(model_h1n1_i, newdata = test_features_mice_imput, type = "prob")
+  # sumamos las probabilidades
+  prediction_h1n1_prob = prediction_h1n1_prob + (prediction_h1n1_prob_i / n_tree)
+}
+```
+
+Veamos el comportamiento del ensemble de algoritmos para la seasonal_vaccine
+
+```{r}
+# implantamos una semilla para que los resultados sean reproducibles
+set.seed(33937)
+# n_tree: Número de árboles
+n_tree = 150
+# creamos un dataframe para guardar las probabilidades obtenidas
+prediction_seasonal_prob = data.frame(X0 = rep(0.0, dim(test_features_mice_imput)[1]), X1 = rep(0.0, dim(test_features_mice_imput)[1]))
+# creamos un índice para las particiones
+part = (dim(train_features_mice_imput)[1] * 5) %/% 100
+for (i in 1:n_tree){
+  token = sample(dim(train_features_mice_imput)[1])
+  # feature_index = raíz(número de atributos)
+  ind_feat = sample(length(colnames(train_features_mice_imput)), 6)
+  # entrenamos
+  model_seasonal_i = train(train_features_mice_imput[token[1:part], ind_feat], make.names(train_labels[token[1:part], 2]),
+                  method = "rpart",
+                  metric = "ROC",
+                  trControl = ctrl,
+                  tuneLength = 10)
+  # calculamos las probabilidades individuales
+  prediction_seasonal_prob_i = predict(model_seasonal_i, newdata = test_features_mice_imput, type = "prob")
+  # sumamos las probabilidades
+  prediction_seasonal_prob = prediction_seasonal_prob + (prediction_seasonal_prob_i / n_tree)
+}
+```
+
+Preparamos el archivo submission
+```{r}
+submission = read.csv('submission_format.csv', header=TRUE, sep=',')
+```
+
+Guardamos el archivo submission para subida a la competición
+```{r}
+submission$h1n1_vaccine = prediction_h1n1_prob$X1
+submission$seasonal_vaccine = prediction_seasonal_prob$X1
+
+write_csv(submission, "submission_rpart_bin_mice_imput_ensemble.csv")
+```
+
+La puntuación obtenida en la plataforma es del 0.8167
