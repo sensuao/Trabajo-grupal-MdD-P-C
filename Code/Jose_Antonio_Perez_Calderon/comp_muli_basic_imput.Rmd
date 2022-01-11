@@ -162,9 +162,9 @@ Predecimos para obtener la probabilidad:
 # Predecimos para los datos de test particionados
 prediction_prob_class = predict(model, newdata = test_features_sample, type = "prob")
 print("AUC_h1n1: ")
-auc(roc(((prediction_prob_class$X2+prediction_prob_class$X3)+(1-(prediction_prob_class$X0+prediction_prob_class$X1)))/2, test_labels_sample$h1n1_vaccine))
+auc(roc((prediction_prob_class$X2+prediction_prob_class$X3)+(1-(prediction_prob_class$X0+prediction_prob_class$X1)), test_labels_sample$h1n1_vaccine))
 print("AUC_seasonal: ")
-auc(roc(((prediction_prob_class$X1+prediction_prob_class$X3)+(1-(prediction_prob_class$X0+prediction_prob_class$X2)))/2, test_labels_sample$h1n1_vaccine))
+auc(roc((prediction_prob_class$X1+prediction_prob_class$X3)+(1-(prediction_prob_class$X0+prediction_prob_class$X2)), test_labels_sample$seasonal_vaccine))
 ```
 
 Obtenemos un accuracy de 0.7431606 para h1n1 y de 0.6752186 para seasonal.
@@ -311,7 +311,7 @@ prediction_prob = predict(model, newdata = test_features_sample, type = "prob")
 print("AUC_h1n1: ")
 auc(roc((((prediction_class2_prob$X1+prediction_class3_prob$X1)/2)+((1-(prediction_class0_prob$X1+prediction_class1_prob$X1))/2))/2, test_labels_sample$h1n1_vaccine))
 print("AUC_seasonal: ")
-auc(roc((((prediction_class1_prob$X1+prediction_class3_prob$X1)/2)+((1-(prediction_class0_prob$X1+prediction_class2_prob$X1))/2))/2, test_labels_sample$h1n1_vaccine))
+auc(roc((((prediction_class1_prob$X1+prediction_class3_prob$X1)/2)+((1-(prediction_class0_prob$X1+prediction_class2_prob$X1))/2))/2, test_labels_sample$seasonal_vaccine))
 ```
 
 Entrenamos con todos los datos para obtener las probabilidades finales que guardaremos para el archivo submission
