@@ -167,9 +167,11 @@ print("AUC_seasonal: ")
 auc(roc((prediction_prob_class$X1+prediction_prob_class$X3)+(1-(prediction_prob_class$X0+prediction_prob_class$X2)), test_labels_sample$seasonal_vaccine))
 ```
 
-Obtenemos un accuracy de 0.7431606 para h1n1 y de 0.6752186 para seasonal.
+Obtenemos un AUC de 0.7431606 para h1n1 y de 0.6752186 para seasonal.
 
 Reentrenamos con todos los datos para calcular la probabilidad con los datos de test reales.
+
+Volvemos a mantener valor de tuneLength=10 por lo mencionado en el código comp_binar_basic_imput.Rmd en la línea 377.
 
 ```{r}
 # implantamos una semilla para que los resultados sean reproducibles
@@ -314,7 +316,9 @@ print("AUC_seasonal: ")
 auc(roc((((prediction_class1_prob$X1+prediction_class3_prob$X1)/2)+((1-(prediction_class0_prob$X1+prediction_class2_prob$X1))/2))/2, test_labels_sample$seasonal_vaccine))
 ```
 
-Entrenamos con todos los datos para obtener las probabilidades finales que guardaremos para el archivo submission
+Entrenamos con todos los datos para obtener las probabilidades finales que guardaremos para el archivo submission.
+
+Volvemos a mantener valor de tuneLength=10 por lo mencionado en el código comp_binar_basic_imput.Rmd en la línea 377.
 
 Clase0
 

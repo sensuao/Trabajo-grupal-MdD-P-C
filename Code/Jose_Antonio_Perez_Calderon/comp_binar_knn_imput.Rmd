@@ -142,7 +142,7 @@ prediction_h1n1_prob = predict(model_h1n1, newdata = test_features_knn_imput_sam
 print("AUC: ")
 auc(roc(prediction_h1n1_prob$`1`, test_labels_knn_imput_sample$h1n1_vaccine))
 ```
-Obtenemos un accuracy de 0.8064986 para h1n1
+Obtenemos un AUC de 0.7804266 para h1n1
 
 Veamos el comportamiento del modelo para la clase de seasonal_vaccine con las particiones creadas
 ```{r}
@@ -179,9 +179,11 @@ prediction_seasonal_prob = predict(model_seasonal, newdata = test_features_knn_i
 print("AUC: ")
 auc(roc(prediction_seasonal_prob$`1`, test_labels_knn_imput_sample$seasonal_vaccine))
 ```
-Obtenemos un accuracy de 0.8041627 para seasonal
+Obtenemos un AUC de 0.7931217 para seasonal
 
 Reentrenamos con todos los datos para calcular la probabilidad con los datos de test reales
+
+Volvemos a mantener valor de tuneLength=10 por lo mencionado en el código comp_binar_basic_imput.Rmd en la línea 377.
 
 Veamos el modelo para la clase hin1_vaccine 
 ```{r}
@@ -208,7 +210,7 @@ Veamos la matriz de confusión y los resultados:
 ```{r}
 confusionMatrix(model_h1n1)
 ```
-Obtenemos un accuracy de 0.8285 para h1n1
+Obtenemos un accuracy de 0.8296 para h1n1
 
 Predecimos para obtener la probabilidad:
 ```{r}
@@ -325,6 +327,8 @@ cat("AUC:", auc(roc(prediction_seasonal_prob$X1, test_labels_knn_imput_sample$se
 ```
 
 Entrenamos con todos los datos para obtener las probabilidades finales que guardaremos para el archivo submission
+
+Volvemos a mantener valor de tuneLength=10 por lo mencionado en el código comp_binar_basic_imput.Rmd en la línea 377.
 
 Veamos el comportamiento del ensemble de algoritmos para la hin1_vaccine
 ```{r}

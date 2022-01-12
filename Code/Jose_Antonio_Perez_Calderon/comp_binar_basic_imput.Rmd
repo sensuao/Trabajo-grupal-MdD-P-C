@@ -333,7 +333,7 @@ prediction_h1n1_prob = predict(model_h1n1, newdata = test_features_sample, type 
 print("AUC: ")
 auc(roc(prediction_h1n1_prob$`1`, test_labels_sample$h1n1_vaccine))
 ```
-Obtenemos un accuracy de 0.7834197 para h1n1
+Obtenemos un AUC de 0.7834197 para h1n1
 
 Veamos el comportamiento del modelo para la clase de seasonal_vaccine con las particiones creadas
 ```{r}
@@ -370,9 +370,11 @@ prediction_seasonal_prob = predict(model_seasonal, newdata = test_features_sampl
 print("AUC: ")
 auc(roc(prediction_seasonal_prob$`1`, test_labels_sample$seasonal_vaccine))
 ```
-Obtenemos un accuracy de 0.8022633 para seasonal
+Obtenemos un AUC de 0.8022633 para seasonal
 
 Reentrenamos con todos los datos para calcular la probabilidad con los datos de test reales.
+
+Mantenemos el valor de tuneLength=10 para que vuelva a obtener el mejor valor de cp ya que hemos realizado pruebas con valores menores de tuneLength y no se consigue alcanzar el mismo valor de cp que en los casos en que tuneLength vale 10. Es decir, el algoritmo realiza podas mayores que influyen en los resultados obtenidos. En concreto, disminuyen los valores de accuracy y de AUC.
 
 Lo hacemos primero para h1n1_vaccine:
 ```{r}
@@ -398,7 +400,6 @@ Veamos la matriz de confusión y los resultados:
 ```{r}
 confusionMatrix(model_h1n1)
 ```
-Obtenemos un accuracy de 0.8446 para h1n1
 
 Predecimos para obtener la probabilidad:
 ```{r}
@@ -430,7 +431,6 @@ Veamos la matriz de confusión y los resultados:
 ```{r}
 confusionMatrix(model_seasonal)
 ```
-Obtenemos un accuracy de 0.7605 para seasonal
 
 Predecimos para obtener la probabilidad:
 ```{r}
@@ -490,7 +490,7 @@ for (n_tree in n) {
   # mostramos la precisión
   cat("AUC",n_tree,":", auc(roc(prediction_h1n1_prob$X1, test_labels_sample$h1n1_vaccine)), "\n")
   acc <- append(acc, auc(roc(prediction_h1n1_prob$X1, test_labels_sample$h1n1_vaccine)))
-df <- data_frame("n"= n, "Accuracy_h1n1" = acc)
+df <- data_frame("n"= n, "AUC_h1n1" = acc)
 }
 ```
 
@@ -535,13 +535,15 @@ for (n_tree in n) {
 Vemos que el mejor resultado se ha obtenido con un ensemble de 150 árboles y es de 0.84798. Utilizaremos este número de árboles para la predicción real con los datos de test para la clase seasonal_vaccine.
 
 ```{r}
-df <- data_frame(df, "Accuracy_seasonal" = acc1)
-plot(df$n, df$Accuracy_seasonal)
+df <- data_frame(df, "AUC_seasonal" = acc1)
+plot(df$n, df$AUC_seasonal)
 ```
 No observamos que tienda a estabilizarse el número de árboles, al menos con estas cantidades.
 
 
-Entrenamos con todos los datos para obtener las probabilidades finales que guardaremos para el archivo submission
+Entrenamos con todos los datos para obtener las probabilidades finales que guardaremos para el archivo submission.
+
+Volvemos a mantener valor de tuneLength=10 por lo mencionado anteriormente en la línea 377.
 
 Veamos el comportamiento del ensemble de algoritmos para la hin1_vaccine
 ```{r}
