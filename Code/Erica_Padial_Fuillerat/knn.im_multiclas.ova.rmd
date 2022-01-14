@@ -1,0 +1,270 @@
+---
+title: "flu5"
+author: "Erica_Padial"
+date: "7/1/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Algoritmo kNN
+
+## Cuarto estudio de preprocesamiento e implementación de algoritmo kNN
+#### Preprocesamiento con conversión e multietiqueta a multiclase:
+
+Cargamos las librerías:
+```{r include=FALSE}
+suppressMessages(library(tidyverse))
+library(caret)
+```
+
+Cargamos los datos:
+```{r}
+tra_feat = read.csv('F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/training_set_features.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+tra_lab = read.csv('F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/training_set_labels.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+```
+
+```{r}
+head(tra_feat)
+str(tra_feat)
+summary(tra_feat)
+sum(duplicated(tra_feat))
+```
+Observamos que no hay filas repetidas.
+
+Conversión de multietiqueta a multiclase
+```{r}
+tra_lab = tra_lab %>% mutate(clase = 2 * h1n1_vaccine + seasonal_vaccine)
+```
+
+Descomposición OVA
+
+```{r}
+tra_lab = tra_lab %>% mutate(clase0 = ifelse(clase == 0, 1, 0),
+                             clase1 = ifelse(clase == 1, 1, 0),
+                             clase2 = ifelse(clase == 2, 1, 0),
+                             clase3 = ifelse(clase == 3, 1, 0))
+```
+
+Vemos que si hay valores nulos en las variables:
+```{r}
+ratio_nulos = colSums(is.na(tra_feat))/nrow(tra_feat)
+ratio_nulos
+```
+
+Hay columnas con muchos valores perdidos como 'health_insurance', 'employment_industry' y 'employment_occupation'. Procedemos a eliminarlas:
+```{r}
+tra_feat <- tra_feat[,-c(16,35,36)]
+```
+
+Convertimos a variables de tipo numérico todas aquellas que sean categóricas. Primero vamos a observar los valores existentes para estas:
+```{r}
+#Vemos que columnas son de tipo 'character'
+grep('TRUE',sapply(c(1:ncol(tra_feat)), function(x) is.character(tra_feat[, x])))
+#Vemos en qué rangos se distribuyen:
+sapply(c(22:31), function(x) colnames(tra_feat[x]))
+sapply(c(22:31), function(x) table(tra_feat[, x]))
+```
+
+```{r}
+tra_feat$age_group<-factor(tra_feat$age_group, levels= c("18 - 34 Years", "35 - 44 Years", "45 - 54 Years", "55 - 64 Years", "65+ Years"), labels = c("1", "2", "3", "4", "5"))
+tra_feat$education<-factor(tra_feat$education, levels= c("< 12 Years", "12 Years", "College Graduate", "Some College"), labels = c("1", "2", "3", "4"))
+tra_feat$race<-factor(tra_feat$race, levels= c("Black", "Hispanic", "Other or Multiple", "White"), labels = c("1", "2", "3", "4"))
+tra_feat$sex<-factor(tra_feat$sex, levels= c("Female", "Male"), labels = c("1", "2"))
+tra_feat$income_poverty<-factor(tra_feat$income_poverty, levels= c("<= $75,000, Above Poverty", "> $75,000", "Below Poverty"), labels = c("1", "2", "3"))
+tra_feat$marital_status<-factor(tra_feat$marital_status, levels= c("Married", "Not Married"), labels = c("1", "2"))
+tra_feat$rent_or_own<-factor(tra_feat$rent_or_own, levels= c("Own", "Rent"), labels = c("1", "2"))
+tra_feat$employment_status<-factor(tra_feat$employment_status, levels= c("Employed", "Not in Labor Force", "Unemployed"), labels = c("1", "2", "3"))
+tra_feat$hhs_geo_region<-factor(tra_feat$hhs_geo_region, levels= c("atmpeygn", "bhuqouqj", "dqpwygqj", "fpwskwrf", "kbazzjca", "lrircsnp", "lzgpxyit", "mlyzmhmf", "oxchjgsf", "qufhixun"), labels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"))
+tra_feat$census_msa<-factor(tra_feat$census_msa, levels= c("MSA, Not Principle  City", "MSA, Principle City", "Non-MSA"), labels = c("1", "2", "3"))
+sum(is.na(tra_feat))
+tra_feat[,c(22:31)]<-sapply(c(22:31), function(x) as.numeric(tra_feat[,x]))
+```
+
+Imputamos los valores NA usando la funcion knn.impute de preprocesamiento del paquete caret:
+```{r}
+preProcess_missingdata_model <- preProcess(tra_feat, method='knnImpute')
+preProcess_missingdata_model
+library(RANN)  # required for knnInpute
+tra_feat <- predict(preProcess_missingdata_model, newdata = tra_feat)
+anyNA
+```
+
+Ya que no tenemos NA y las variables categoricas han sido modificadas a numerica, procedemos a dividir los datos para entrenar el modelo kNN:
+```{r}
+tra_lab$clase <- factor(tra_lab$clase)
+shuffle_ds = sample(dim(tra_feat)[1])
+pct90 = (dim(tra_feat)[1] * 90) %/% 100
+
+tra_feat_sam = tra_feat[shuffle_ds[1:pct90], ]
+tra_lab_sam = tra_lab[shuffle_ds[1:pct90], -1]
+
+tst_feat_sam = tra_feat[shuffle_ds[(pct90+1):dim(tra_feat)[1]], ]
+tst_lab_sam = tra_lab[shuffle_ds[(pct90+1):dim(tra_lab)[1]], -1]
+
+tst_lab_sam$h1n1_vaccine <- factor(tst_lab_sam$h1n1_vaccine)
+tst_lab_sam$seasonal_vaccine <- factor(tst_lab_sam$seasonal_vaccine)
+```
+
+
+### Implementación de kNN para etiqueta multiclase
+
+Probamos kNN usando la distancia euclídea para el modelo, con la funcion knn de caret para la variable multiclase:
+```{r}
+set.seed(123457)
+Fit_cl = train(tra_feat_sam, make.names(tra_lab_sam$clase),
+                method = "knn",
+                metric="Accuracy", trControl = trainControl(method = "cv"), tuneGrid = data.frame(.k=1:19))
+
+Pred_cl = predict(Fit_cl, newdata = tst_feat_sam)
+postResample(pred = Pred_cl, obs = tst_lab_sam$clase)
+
+Pred_cl_prob = predict(Fit_cl, newdata = tst_feat_sam, type = "prob")
+print("AUC_h1n1: ")
+auc(roc((Pred_cl_prob$X2+Pred_cl_prob$X3)+(1-(Pred_cl_prob$X0+Pred_cl_prob$X1)), tst_lab_sam$h1n1_vaccine))
+print("AUC_seasonal: ")
+auc(roc((Pred_cl_prob$X1+Pred_cl_prob$X3)+(1-(Pred_cl_prob$X0+Pred_cl_prob$X2)), tst_lab_sam$seasonal_vaccine))
+```
+
+A continuación, entrenamos a cada subclase por separado (OVA) y calculamos las predicciones: 
+```{r}
+tra_lab_sam$clase0 <- factor(tra_lab_sam$clase0)
+tra_lab_sam$clase1 <- factor(tra_lab_sam$clase1)
+tra_lab_sam$clase2 <- factor(tra_lab_sam$clase2)
+tra_lab_sam$clase3 <- factor(tra_lab_sam$clase3)
+# OVA
+Fit_cl0 = train(tra_feat_sam, make.names(tra_lab_sam$clase0),
+                method = "knn",
+                metric="Accuracy", trControl = trainControl(method = "cv"), tuneGrid = data.frame(.k=1:19))
+
+ Pred_cl0_prob = predict(Fit_cl0, newdata = tst_feat_sam, type = "prob")
+
+Fit_cl1 = train(tra_feat_sam, make.names(tra_lab_sam$clase1),
+                method = "knn",
+                metric="Accuracy", trControl = trainControl(method = "cv"), tuneGrid = data.frame(.k=1:19))
+
+ Pred_cl1_prob = predict(Fit_cl1, newdata = tst_feat_sam, type = "prob")
+
+Fit_cl2 = train(tra_feat_sam, make.names(tra_lab_sam$clase2),
+                method = "knn",
+                metric="Accuracy", trControl = trainControl(method = "cv"), tuneGrid = data.frame(.k=1:19))
+
+Pred_cl2_prob = predict(Fit_cl2, newdata = tst_feat_sam, type = "prob")
+
+Fit_cl3 = train(tra_feat_sam, make.names(tra_lab_sam$clase3),
+                method = "knn",
+                metric="Accuracy", trControl = trainControl(method = "cv"), tuneGrid = data.frame(.k=1:19))
+
+Pred_cl3_prob = predict(Fit_cl3, newdata = tst_feat_sam, type = "prob")
+
+print("AUC_h1n1: ")
+auc(roc((((Pred_cl2_prob$X1+Pred_cl3_prob$X1)/2)+((1-(Pred_cl0_prob$X1+Pred_cl1_prob$X1))/2))/2, tst_lab_sam$h1n1_vaccine))
+print("AUC_seasonal: ")
+auc(roc((((Pred_cl1_prob$X1+Pred_cl3_prob$X1)/2)+((1-(Pred_cl0_prob$X1+Pred_cl2_prob$X1))/2))/2, tst_lab_sam$seasonal_vaccine))
+```
+
+
+Ralizamos el mismo proceso para todos los datos de train y los datos de test para observar sus resultados en la competicion:
+
+Cargamos los datos de test:
+```{r}
+test_feat = read.csv('F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/test_set_features.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+```
+
+Le realizamos el mismo preprocesamiento que a los datos de train:
+```{r}
+test_feat <- test_feat[,-c(16,35,36)]
+```
+
+```{r}
+test_feat$age_group<-factor(test_feat$age_group, levels= c("18 - 34 Years", "35 - 44 Years", "45 - 54 Years", "55 - 64 Years", "65+ Years"), labels = c("1", "2", "3", "4", "5"))
+test_feat$education<-factor(test_feat$education, levels= c("< 12 Years", "12 Years", "College Graduate", "Some College"), labels = c("1", "2", "3", "4"))
+test_feat$race<-factor(test_feat$race, levels= c("Black", "Hispanic", "Other or Multiple", "White"), labels = c("1", "2", "3", "4"))
+test_feat$sex<-factor(test_feat$sex, levels= c("Female", "Male"), labels = c("1", "2"))
+test_feat$income_poverty<-factor(test_feat$income_poverty, levels= c("<= $75,000, Above Poverty", "> $75,000", "Below Poverty"), labels = c("1", "2", "3"))
+test_feat$marital_status<-factor(test_feat$marital_status, levels= c("Married", "Not Married"), labels = c("1", "2"))
+test_feat$rent_or_own<-factor(test_feat$rent_or_own, levels= c("Own", "Rent"), labels = c("1", "2"))
+test_feat$employment_status<-factor(test_feat$employment_status, levels= c("Employed", "Not in Labor Force", "Unemployed"), labels = c("1", "2", "3"))
+test_feat$hhs_geo_region<-factor(test_feat$hhs_geo_region, levels= c("atmpeygn", "bhuqouqj", "dqpwygqj", "fpwskwrf", "kbazzjca", "lrircsnp", "lzgpxyit", "mlyzmhmf", "oxchjgsf", "qufhixun"), labels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"))
+test_feat$census_msa<-factor(test_feat$census_msa, levels= c("MSA, Not Principle  City", "MSA, Principle City", "Non-MSA"), labels = c("1", "2", "3"))
+sum(is.na(test_feat))
+test_feat[,c(22:31)]<-sapply(c(22:31), function(x) as.numeric(test_feat[,x]))
+```
+
+Imputamos los valores NA usando la funcion knn.impute de preprocesamiento del paquete caret:
+```{r}
+preProcess_missingdata_model <- preProcess(test_feat, method='knnImpute')
+preProcess_missingdata_model
+library(RANN)  # required for knnInpute
+test_feat <- predict(preProcess_missingdata_model, newdata = test_feat)
+anyNA
+
+tra_lab$h1n1_vaccine <- factor(tra_lab$h1n1_vaccine)
+tra_lab$seasonal_vaccine <- factor(tra_lab$seasonal_vaccine)
+```
+
+Probamos kNN usando la distancia euclídea para el modelo, con la funcion knn de caret para la variable multiclase:
+```{r}
+set.seed(123457)
+Fit_cl = train(tra_feat, make.names(tra_lab$clase),
+                method = "knn",
+                metric="Accuracy", trControl = trainControl(method = "cv"), tuneGrid = data.frame(.k=1:19))
+
+Pred_cl = predict(Fit_cl, newdata = test_feat)
+Pred_cl_prob = predict(Fit_cl, newdata = test_feat, type = "prob")
+
+h1n1_vaccine = (Pred_cl_prob$X2+Pred_cl_prob$X3)+(1-(Pred_cl_prob$X0+Pred_cl_prob$X1))
+seasonal_vaccine = (Pred_cl_prob$X1+Pred_cl_prob$X3)+(1-(Pred_cl_prob$X0+Pred_cl_prob$X2))
+```
+
+A continuación, entrenamos a cada subclase por separado (OVA) y calculamos las predicciones:
+```{r}
+tra_lab$clase0 <- factor(tra_lab$clase0)
+tra_lab$clase1 <- factor(tra_lab$clase1)
+tra_lab$clase2 <- factor(tra_lab$clase2)
+tra_lab$clase3 <- factor(tra_lab$clase3)
+# OVA
+Fit_cl0 = train(tra_feat, make.names(tra_lab$clase0),
+                method = "knn",
+                metric="Accuracy", trControl = trainControl(method = "cv"), tuneGrid = data.frame(.k=1:19))
+
+ Pred_cl0_prob = predict(Fit_cl0, newdata = test_feat, type = "prob")
+
+Fit_cl1 = train(tra_feat, make.names(tra_lab$clase1),
+                method = "knn",
+                metric="Accuracy", trControl = trainControl(method = "cv"), tuneGrid = data.frame(.k=1:19))
+
+ Pred_cl1_prob = predict(Fit_cl1, newdata = test_feat, type = "prob")
+
+Fit_cl2 = train(tra_feat, make.names(tra_lab$clase2),
+                method = "knn",
+                metric="Accuracy", trControl = trainControl(method = "cv"), tuneGrid = data.frame(.k=1:19))
+
+Pred_cl2_prob = predict(Fit_cl2, newdata = test_feat, type = "prob")
+
+Fit_cl3 = train(tra_feat, make.names(tra_lab$clase3),
+                method = "knn",
+                metric="Accuracy", trControl = trainControl(method = "cv"), tuneGrid = data.frame(.k=1:19))
+
+Pred_cl3_prob = predict(Fit_cl3, newdata = test_feat, type = "prob")
+```
+
+Creamos los archivos de submission:
+```{r}
+submission.form <- read.csv('F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/submission_format.csv', header=TRUE, sep=',',na.strings = c('?','', 'NA'))
+
+#Archivo de multiclase:
+submission_knn.im_eu.multiclas <- data.frame(respondent_id = submission.form$respondent_id, h1n1_vaccine = (Pred_cl_prob$X2+Pred_cl_prob$X3)+(1-(Pred_cl_prob$X0+Pred_cl_prob$X1)),seasonal_vaccine = (Pred_cl_prob$X1+Pred_cl_prob$X3)+(1-(Pred_cl_prob$X0+Pred_cl_prob$X2)))
+write_csv(submission_knn.im_eu.multiclas, "F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/submissions/submission_knn.im_eu.multiclas.csv")
+
+#Archivo con OVA:
+submission_knn.im_eu.ova <- data.frame(respondent_id = submission.form$respondent_id, h1n1_vaccine = (((Pred_cl1_prob$X1+Pred_cl3_prob$X1)/2)+((1-(Pred_cl0_prob$X1+Pred_cl2_prob$X1))/2))/2,seasonal_vaccine = (((Pred_cl1_prob$X1+Pred_cl3_prob$X1)/2)+((1-(Pred_cl0_prob$X1+Pred_cl2_prob$X1))/2))/2)
+write_csv(submission_knn.im_eu.multiclas, "F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/submissions/submission_knn.im_eu.ova.csv")
+```
+

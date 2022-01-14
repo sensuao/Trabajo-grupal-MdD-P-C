@@ -1,0 +1,320 @@
+---
+title: "flu2"
+author: "Erica_Padial"
+date: "5/1/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Primer estudio de preprocesamiento e implementación de algoritmo kNN:
+#### Preprocesamiento (sin conversión de multietiqueta a multiclase)
+
+Cargamos las librerías:
+```{r include=FALSE}
+suppressMessages(library(tidyverse))
+library(caret)
+```
+
+Cargamos los datos:
+```{r}
+tra_feat = read.csv('F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/training_set_features.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+tra_lab = read.csv('F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/training_set_labels.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+```
+
+```{r}
+head(tra_feat)
+str(tra_feat)
+summary(tra_feat)
+sum(duplicated(tra_feat))
+```
+Observamos que no hay filas repetidas.
+
+Vemos que si hay valores nulos en las variables:
+```{r}
+ratio_nulos = colSums(is.na(tra_feat))/nrow(tra_feat)
+ratio_nulos
+```
+Hay columnas con muchos valores perdidos como 'health_insurance', 'employment_industry' y 'employment_occupation'. Procedemos a eliminarlas:
+```{r}
+tra_feat <- tra_feat[,-c(16,35,36)]
+```
+
+Convertimos a variables de tipo numérico todas aquellas que sean categóricas. Primero vamos a observar los valores existentes para estas:
+```{r}
+#Vemos que columnas son de tipo 'character'
+grep('TRUE',sapply(c(1:ncol(tra_feat)), function(x) is.character(tra_feat[, x])))
+#Vemos en qué rangos se distribuyen:
+sapply(c(22:31), function(x) colnames(tra_feat[x]))
+sapply(c(22:31), function(x) table(tra_feat[, x]))
+```
+
+```{r}
+tra_feat$age_group<-factor(tra_feat$age_group, levels= c("18 - 34 Years", "35 - 44 Years", "45 - 54 Years", "55 - 64 Years", "65+ Years"), labels = c("1", "2", "3", "4", "5"))
+tra_feat$education<-factor(tra_feat$education, levels= c("< 12 Years", "12 Years", "College Graduate", "Some College"), labels = c("1", "2", "3", "4"))
+tra_feat$race<-factor(tra_feat$race, levels= c("Black", "Hispanic", "Other or Multiple", "White"), labels = c("1", "2", "3", "4"))
+tra_feat$sex<-factor(tra_feat$sex, levels= c("Female", "Male"), labels = c("1", "2"))
+tra_feat$income_poverty<-factor(tra_feat$income_poverty, levels= c("<= $75,000, Above Poverty", "> $75,000", "Below Poverty"), labels = c("1", "2", "3"))
+tra_feat$marital_status<-factor(tra_feat$marital_status, levels= c("Married", "Not Married"), labels = c("1", "2"))
+tra_feat$rent_or_own<-factor(tra_feat$rent_or_own, levels= c("Own", "Rent"), labels = c("1", "2"))
+tra_feat$employment_status<-factor(tra_feat$employment_status, levels= c("Employed", "Not in Labor Force", "Unemployed"), labels = c("1", "2", "3"))
+tra_feat$hhs_geo_region<-factor(tra_feat$hhs_geo_region, levels= c("atmpeygn", "bhuqouqj", "dqpwygqj", "fpwskwrf", "kbazzjca", "lrircsnp", "lzgpxyit", "mlyzmhmf", "oxchjgsf", "qufhixun"), labels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"))
+tra_feat$census_msa<-factor(tra_feat$census_msa, levels= c("MSA, Not Principle  City", "MSA, Principle City", "Non-MSA"), labels = c("1", "2", "3"))
+sum(is.na(tra_feat))
+tra_feat[,c(22:31)]<-sapply(c(22:31), function(x) as.numeric(tra_feat[,x]))
+```
+
+Imputamos los valores NA usando la funcion knn.impute de preprocesamiento del paquete caret:
+```{r}
+preProcess_missingdata_model <- preProcess(tra_feat, method='knnImpute')
+preProcess_missingdata_model
+library(RANN)  # required for knnInpute
+tra_feat <- predict(preProcess_missingdata_model, newdata = tra_feat)
+anyNA
+```
+
+Ya que no tenemos NAs, las variables categoricas han sido modificadas a numericas y todos los datos están normalizados, procedemos a dividir los datos para entrenar el modelo kNN:
+```{r}
+tra_lab$h1n1_vaccine <- factor(tra_lab$h1n1_vaccine)
+tra_lab$seasonal_vaccine <- factor(tra_lab$seasonal_vaccine)
+shuffle_ds = sample(dim(tra_feat)[1])
+pct90 = (dim(tra_feat)[1] * 90) %/% 100
+
+tra_feat_sam = tra_feat[shuffle_ds[1:pct90], -1]
+tra_lab_sam = tra_lab[shuffle_ds[1:pct90], -1]
+
+tst_feat_sam = tra_feat[shuffle_ds[(pct90+1):dim(tra_feat)[1]], -1]
+tst_lab_sam = tra_lab[shuffle_ds[(pct90+1):dim(tra_lab)[1]], -1]
+```
+
+
+### Implementación de kNN en local usando la distancia euclídea 
+
+Probamos kNN usando la distancia euclídea para el modelo, con la funcion knn de caret:
+```{r}
+#Para la vacuna h1n1:
+Fit_1_h1n1 = train(tra_feat_sam, tra_lab_sam$h1n1_vaccine,
+                method = "knn",
+                metric="Accuracy")
+
+Pred_1_h1n1 = predict(Fit_1_h1n1, newdata = tst_feat_sam)
+postResample(pred = Pred_1_h1n1, obs = tst_lab_sam$h1n1_vaccine)
+
+table(Pred_1_h1n1,tst_lab_sam$h1n1_vaccine)
+mean(Pred_1_h1n1==tst_lab_sam$h1n1_vaccine)
+confusionMatrix(table(Pred_1_h1n1,tst_lab_sam$h1n1_vaccine))
+Pred_1_prob_h1n1 = predict(Fit_1_h1n1, newdata = tst_feat_sam, type = "prob")
+print("AUC: ")
+auc(roc(Pred_1_prob_h1n1$`1`, tst_lab_sam$h1n1_vaccine))
+
+
+#Para la vacuna seas:
+Fit_1_seas = train(tra_feat_sam, tra_lab_sam$seasonal_vaccine,
+                method = "knn",
+                metric="Accuracy")
+
+Pred_1_seas = predict(Fit_1_seas, newdata = tst_feat_sam)
+postResample(pred = Pred_1_seas, obs = tst_lab_sam$seasonal_vaccine)
+
+table(Pred_1_seas,tst_lab_sam$seasonal_vaccine)
+mean(Pred_1_seas==tst_lab_sam$seasonal_vaccine)
+confusionMatrix(table(Pred_1_seas,tst_lab_sam$seasonal_vaccine))
+Pred_1_prob_seas = predict(Fit_1_seas, newdata = tst_feat_sam, type = "prob")
+print("AUC: ")
+auc(roc(Pred_1_prob_seas$`1`, tst_lab_sam$seasonal_vaccine))
+```
+
+Observamos que AUC para h1n1 es ligeramente inferior al AUC para seas.
+
+Probamos kNN usando la distancia de Minkowski con la funcion kknn de kknn:
+```{r}
+library(kknn)
+#Para la vacuna h1n1:
+Fit_2_h1n1 = kknn (tra_lab_sam$h1n1_vaccine~., tra_feat_sam , tst_feat_sam , distance = 2)
+
+Pred_2 = predict(Fit_2_h1n1, newdata = tst_feat_sam)
+postResample(pred = Pred_2_h1n1, obs = tst_lab_sam$h1n1_vaccine)
+
+table(Pred_2_h1n1,tst_lab_sam$h1n1_vaccine)
+mean(Pred_2_h1n1==tst_lab_sam$h1n1_vaccine)
+confusionMatrix(table(Pred_2_h1n1,tst_lab_sam$h1n1_vaccine))
+Pred_2_prob_h1n1 = predict(Fit_2_h1n1, newdata = tst_feat_sam, type = "prob")
+Pred_2_prob_h1n1 <- as.data.frame(Pred_2_prob_h1n1)
+print("AUC: ")
+auc(roc(Pred_2_prob_h1n1$`1`, tst_lab_sam$h1n1_vaccine))
+
+
+#Para la vacuna seas:
+Fit_2_seas = kknn (tra_lab_sam$seasonal_vaccine~., tra_feat_sam , tst_feat_sam , distance = 2)
+
+Pred_2_seas = predict(Fit_2_seas, newdata = tst_feat_sam)
+postResample(pred = Pred_2_seas, obs = tst_lab_sam$seasonal_vaccine)
+
+table(Pred_2_seas,tst_lab_sam$seasonal_vaccine)
+mean(Pred_2_seas==tst_lab_sam$seasonal_vaccine)
+confusionMatrix(table(Pred_2_seas,tst_lab_sam$seasonal_vaccine))
+
+Pred_2_prob_seas = predict(Fit_2_seas, newdata = tst_feat_sam, type = "prob")
+Pred_2_prob_seas <- as.data.frame(Pred_2_prob_seas)
+print("AUC: ")
+auc(roc(Pred_2_prob_seas$`1`, tst_lab_sam$seasonal_vaccine))
+```
+
+Nuevamente vemos que AUC de h1n1 es inferior al de seas, aunque para esta distancia, ambos son inferiores que para la distancia euclídea.
+
+Probamos kNN usando la distancia de Manhattan para el modelo, con la funcion kknn de kknn:
+```{r}
+#Para la vacuna h1n1:
+Fit_3_h1n1 = kknn (tra_lab_sam$h1n1_vaccine~., tra_feat_sam , tst_feat_sam , distance = 1)
+
+Pred_3_h1n1 = predict(Fit_3_h1n1, newdata = tst_feat_sam)
+postResample(pred = Pred_3_h1n1, obs = tst_lab_sam$h1n1_vaccine)
+
+table(Pred_3_h1n1,tst_lab_sam$h1n1_vaccine)
+mean(Pred_3_h1n1==tst_lab_sam$h1n1_vaccine)
+confusionMatrix(table(Pred_3_h1n1,tst_lab_sam$h1n1_vaccine))
+
+Pred_3_prob_h1n1 = predict(Fit_3_h1n1, newdata = tst_feat_sam, type = "prob")
+Pred_3_prob_h1n1 <- as.data.frame(Pred_3_prob_h1n1)
+print("AUC: ")
+auc(roc(Pred_3_prob_h1n1$`1`, tst_lab_sam$h1n1_vaccine))
+
+
+#Para la vacuna seas:
+Fit_3_seas = kknn (tra_lab_sam$seasonal_vaccine~., tra_feat_sam , tst_feat_sam , distance = 1)
+
+Pred_3_seas = predict(Fit_3_seas, newdata = tst_feat_sam)
+postResample(pred = Pred_3_seas, obs = tst_lab_sam$seasonal_vaccine)
+
+table(Pred_3_seas,tst_lab_sam$seasonal_vaccine)
+mean(Pred_3_seas==tst_lab_sam$seasonal_vaccine)
+confusionMatrix(table(Pred_3_seas,tst_lab_sam$seasonal_vaccine))
+
+Pred_3_prob_seas = predict(Fit_3_seas, newdata = tst_feat_sam, type = "prob")
+Pred_3_prob_seas <- as.data.frame(Pred_3_prob_seas)
+print("AUC: ")
+auc(roc(Pred_3_prob_seas$`1`, tst_lab_sam$seasonal_vaccine))
+```
+
+Por último, la distancia de manhattan presenta mejores resultados que Minkowski, aunque sigue sin superar a la euclídea. Y AUC para seas es mayor que para h1n1.
+
+Por tanto, el mejor resultado nos lo da el modelo producido por el paquete caret, usando la distancia euclídea.
+
+
+
+### Implementación de kNN con datos de test reales para ambas vacunas con la distancia euclídea:
+
+Cargamos los datos de test:
+```{r}
+test_feat = read.csv('F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/test_set_features.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+```
+
+Le realizamos el mismo preprocesamiento que a los datos de train:
+```{r}
+test_feat <- test_feat[,-c(16,35,36)]
+```
+
+```{r}
+test_feat$age_group<-factor(test_feat$age_group, levels= c("18 - 34 Years", "35 - 44 Years", "45 - 54 Years", "55 - 64 Years", "65+ Years"), labels = c("1", "2", "3", "4", "5"))
+test_feat$education<-factor(test_feat$education, levels= c("< 12 Years", "12 Years", "College Graduate", "Some College"), labels = c("1", "2", "3", "4"))
+test_feat$race<-factor(test_feat$race, levels= c("Black", "Hispanic", "Other or Multiple", "White"), labels = c("1", "2", "3", "4"))
+test_feat$sex<-factor(test_feat$sex, levels= c("Female", "Male"), labels = c("1", "2"))
+test_feat$income_poverty<-factor(test_feat$income_poverty, levels= c("<= $75,000, Above Poverty", "> $75,000", "Below Poverty"), labels = c("1", "2", "3"))
+test_feat$marital_status<-factor(test_feat$marital_status, levels= c("Married", "Not Married"), labels = c("1", "2"))
+test_feat$rent_or_own<-factor(test_feat$rent_or_own, levels= c("Own", "Rent"), labels = c("1", "2"))
+test_feat$employment_status<-factor(test_feat$employment_status, levels= c("Employed", "Not in Labor Force", "Unemployed"), labels = c("1", "2", "3"))
+test_feat$hhs_geo_region<-factor(test_feat$hhs_geo_region, levels= c("atmpeygn", "bhuqouqj", "dqpwygqj", "fpwskwrf", "kbazzjca", "lrircsnp", "lzgpxyit", "mlyzmhmf", "oxchjgsf", "qufhixun"), labels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"))
+test_feat$census_msa<-factor(test_feat$census_msa, levels= c("MSA, Not Principle  City", "MSA, Principle City", "Non-MSA"), labels = c("1", "2", "3"))
+sum(is.na(test_feat))
+test_feat[,c(22:31)]<-sapply(c(22:31), function(x) as.numeric(test_feat[,x]))
+```
+
+Imputamos los valores NA usando la funcion knn.impute de preprocesamiento del paquete caret:
+```{r}
+preProcess_missingdata_model <- preProcess(test_feat, method='knnImpute')
+preProcess_missingdata_model
+library(RANN)  # required for knnInpute
+test_feat <- predict(preProcess_missingdata_model, newdata = test_feat)
+anyNA
+```
+
+Probamos kNN usando la distancia euclídea para el modelo, con la funcion knn de caret:
+```{r}
+#Para la vacuna h1n1:
+Fit_1_h1n1 = train(tra_feat, tra_lab$h1n1_vaccine,
+                method = "knn",
+                metric="Accuracy")
+Fit_1_h1n1
+Fit_1_h1n1$finalModel
+
+Pred_1_h1n1 = predict(Fit_1_h1n1, newdata = test_feat, type = "prob")
+
+#Para la vacuna seas:
+Fit_1_seas = train(tra_feat, tra_lab$seasonal_vaccine,
+                method = "knn",
+                metric="Accuracy")
+Fit_1_seas
+Fit_1_seas$finalModel
+
+Pred_1_seas = predict(Fit_1_seas, newdata = test_feat, type = "prob")
+```
+
+Probamos kNN usando la distancia de Minkowski para el modelo, con la funcion kknn de kknn:
+```{r}
+#Para la vacuna h1n1:
+Fit_2_h1n1 = kknn (tra_lab$h1n1_vaccine~., tra_feat , test_feat , distance = 2)
+
+Pred_2_h1n1 = predict(Fit_2_h1n1, newdata = test_feat, type = "prob")
+Pred_2_h1n1 <- as.data.frame(Pred_2_h1n1)
+
+
+#Para la vacuna seas:
+Fit_2_seas = kknn (tra_lab$seasonal_vaccine~., tra_feat , test_feat , distance = 2)
+
+Pred_2_seas = predict(Fit_2_seas, newdata = test_feat, type = "prob")
+Pred_2_seas <- as.data.frame(Pred_2_seas)
+```
+
+Probamos kNN usando la distancia de Manhattan para el modelo, con la funcion kknn de kknn:
+```{r}
+#Para la vacuna h1n1:
+Fit_3_h1n1 = kknn (tra_lab$h1n1_vaccine~., tra_feat , test_feat , distance = 1)
+
+Pred_3_h1n1 = predict(Fit_3_h1n1, newdata = test_feat, type = "prob")
+Pred_3_h1n1 <- as.data.frame(Pred_3_h1n1)
+
+
+#Para la vacuna seas:
+Fit_3_seas = kknn (tra_lab$seasonal_vaccine~., tra_feat , test_feat , distance = 1)
+
+Pred_3_seas = predict(Fit_3, newdata = test_feat, type = "prob")
+Pred_3_seas <- as.data.frame(Pred_3_seas)
+```
+
+Creamos los submission para cada uno de los tres modelos (uno para cada distancia):
+```{r}
+submission.form <- read.csv('F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/submission_format.csv', header=TRUE, sep=',',na.strings = c('?','', 'NA'))
+
+
+#Submission para ambas vacunas con proprocesamiento por imputacion con knn y clasificador knn con distancia euclidea:
+submission_knn.im_eu <- data.frame(respondent_id = submission.form$respondent_id, h1n1_vaccine = Pred_1_h1n1$`1`,seasonal_vaccine = Pred_1_seas$`1`)
+write_csv(submission_knn.im_eu, "F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/submissions/submission_knn.im_eu.csv")
+
+
+#Submission para ambas vacunas con proprocesamiento por imputacion con knn y clasificador knn con distancia Minkowski:
+submission_knn.im_mk <- data.frame(respondent_id = submission.form$respondent_id, h1n1_vaccine = Pred_2_h1n1$`1`, seasonal_vaccine = Pred_2_seas$`1`)
+write_csv(submission_knn.im_mk, "F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/submissions/submission_knn.im_mk.csv")
+
+
+#Submission para ambas vacunas con proprocesamiento por imputacion con knn y clasificador knn con distancia Manhattan:
+submission_knn.im_mh <- data.frame(respondent_id = submission.form$respondent_id, h1n1_vaccine = Pred_3_h1n1$`1`, seasonal_vaccine = Pred_3_seas$`1`)
+write_csv(submission_knn.im_mh, "F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/submissions/submission_knn.im_mh.csv")
+```
+
+
+

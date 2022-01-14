@@ -1,0 +1,274 @@
+---
+title: "flu"
+author: "Erica Padial"
+date: "19/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Algoritmo kNN
+
+Cargamos las librerías:
+```{r include=FALSE}
+suppressMessages(library(tidyverse))
+```
+
+Cargamos los datos:
+```{r}
+tra_feat = read.csv('F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/training_set_features.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+tra_lab = read.csv('F:/Master Ciencia de Datos/Mineria de datos. Preprocesamiento y clasificación/Trabajo/training_set_labels.csv', header=TRUE, sep=',',
+                    na.strings = c('?','', 'NA'))
+```
+
+## Primer estudio de preprocesamiento e implementación de algoritmo kNN:
+#### Preprocesamiento (para clasificación binaria)
+```{r}
+head(tra_feat)
+str(tra_feat)
+summary(tra_feat)
+sum(duplicated(tra_feat))
+```
+Observamos que no hay filas repetidas.
+
+Vemos que si hay valores nulos en las variables:
+```{r}
+ratio_nulos = colSums(is.na(tra_feat))/nrow(tra_feat)
+ratio_nulos
+```
+
+Hay columnas con muchos valores perdidos como 'health_insurance', 'employment_industry' y 'employment_occupation'. Procedemos a eliminarlas:
+```{r}
+tra_feat <- tra_feat[,-c(16,35,36)]
+```
+
+Eliminamos los NA con imputación de valores manual:
+```{r}
+library(modeest)
+#Si no responden si han tomado medicamentos antivirales, ponemos el valor de la moda para esa columna:
+tra_feat$behavioral_antiviral_meds[is.na(tra_feat$behavioral_antiviral_meds)] = mlv(tra_feat$behavioral_antiviral_meds)
+#Si no responden si se lavan las manos con frecuencia, suponemos que es un No (no lo dicen por vergüenza)
+tra_feat$behavioral_wash_hands[is.na(tra_feat$behavioral_wash_hands)] = 0
+#Si no responden si evitan tocarse la cara, suponemos que es un No (no lo dicen por vergüenza)
+tra_feat$behavioral_touch_face[is.na(tra_feat$behavioral_touch_face)] = 0
+#Si no responden si tienen afecciones crónicas, suponemos que es un Sí (no lo dicen por vergüenza)
+tra_feat$chronic_med_condition[is.na(tra_feat$chronic_med_condition)] = 1
+#Si no responden si están preocupados por la vacuna H1N1, suponemos que no saben:
+tra_feat$opinion_h1n1_sick_from_vacc[is.na(tra_feat$opinion_h1n1_sick_from_vacc)] = 3
+#Si no responden si están preocupados por la vacuna de influenza, suponemos que no saben:
+tra_feat$opinion_seas_sick_from_vacc[is.na(tra_feat$opinion_seas_sick_from_vacc)] = 3
+#Si no responden el estado civil, suponemos que es un No 
+tra_feat$marital_status[is.na(tra_feat$marital_status)] = "Not Married"
+#Si no responden al número de niños en hogar, ponemos el valor de la moda para esa columna:
+tra_feat$household_children[is.na(tra_feat$household_children)] = mlv(tra_feat$household_children)
+#Si no responden el nivel de preocupación sobre H1N1, suponemos que es un No (no lo dicen por vergüenza)
+tra_feat$h1n1_concern[is.na(tra_feat$h1n1_concern)] = 0
+#Si no responden si han evitado contacto con enfermos, suponemos que es un No (no lo dicen por vergüenza)
+tra_feat$behavioral_avoidance[is.na(tra_feat$behavioral_avoidance)] = 0
+#Si no responden si han reducido tiempo en grnades reuniones, suponemos que es un No (no lo dicen por vergüenza)
+tra_feat$behavioral_large_gatherings[is.na(tra_feat$behavioral_large_gatherings)] = 0
+#Si no responden si el médico les recomendo la vacuna H1N1, suponemos que es un No
+tra_feat$doctor_recc_h1n1[is.na(tra_feat$doctor_recc_h1n1)] = 0
+#Si no responden si tienen contacto con menor de 6 meses, ponemos el valor de la moda para esa columna:
+tra_feat$child_under_6_months[is.na(tra_feat$child_under_6_months)] = mlv(tra_feat$child_under_6_months)
+#Si no responden sobre la efectividad de H1N1, suponemos que no saben:
+tra_feat$opinion_h1n1_vacc_effective[is.na(tra_feat$opinion_h1n1_vacc_effective)] = 3
+#Si no responden sobre la efectividad de seas, suponemos que no saben:
+tra_feat$opinion_seas_vacc_effective[is.na(tra_feat$opinion_seas_vacc_effective)] = 3
+#Si no responden su situacion habitual, suponemos que es rent:
+tra_feat$rent_or_own[is.na(tra_feat$rent_or_own)] = "Rent"
+#Si no responden el nivel de conocimiento de H1N1, suponemos que es un 0 (no lo dicen por vergüenza)
+tra_feat$h1n1_knowledge[is.na(tra_feat$h1n1_knowledge)] = 0
+#Si no responden si han comprado mascarilla, suponemos que es un 0 (no lo dicen por vergüenza)
+tra_feat$behavioral_face_mask[is.na(tra_feat$behavioral_face_mask)] = 0
+#Si no responden si han reducido contacto con personas agenas, suponemos que es un 0 (no lo dicen por vergüenza)
+tra_feat$behavioral_outside_home[is.na(tra_feat$behavioral_outside_home)] = 0
+#Si no responden si el médico les recomendo la vacuna seas, suponemos que es un No
+tra_feat$doctor_recc_seasonal[is.na(tra_feat$doctor_recc_seasonal)] = 0
+#Si no responden si es trabajador de la salud, suponemos que es un si
+tra_feat$health_worker[is.na(tra_feat$health_worker)] = 1
+#Si no responden sobre el riesgo de H1N1,  suponemos que no saben:
+tra_feat$opinion_h1n1_risk[is.na(tra_feat$opinion_h1n1_risk)] = 3
+#Si no responden sobre el riesgo de seas,  suponemos que no saben:
+tra_feat$opinion_seas_risk[is.na(tra_feat$opinion_seas_risk)] = 3
+#Si no responden el nivel educativo, suponemos que es < 12 Years
+tra_feat$education[is.na(tra_feat$education)] = "< 12 Years"
+#Si no responden los ingresuso anuales, suponemos que son Below Poverty
+tra_feat$income_poverty[is.na(tra_feat$income_poverty)] = "Below Poverty"
+#Si no responden su situacion laboral, suponemos Unemployed
+tra_feat$employment_status[is.na(tra_feat$employment_status)] = "Unemployed"
+#Si no responden el número de adultos del hogar, ponemos el valor de la moda para esa columna: 
+tra_feat$household_adults[is.na(tra_feat$household_adults)] = mlv(tra_feat$household_adults)
+```
+
+Convertimos a variables de tipo numérico todas aquellas que sean categóricas. Primero vamos a observar los valores existentes para estas:
+```{r}
+#Vemos que columnas son de tipo 'character'
+grep('TRUE',sapply(c(1:ncol(tra_feat)), function(x) is.character(tra_feat[, x])))
+#Vemos en qué rangos se distribuyen:
+sapply(c(21:30), function(x) colnames(tra_feat[x]))
+sapply(c(21:30), function(x) table(tra_feat[, x]))
+```
+
+```{r}
+tra_feat$age_group<-factor(tra_feat$age_group, levels= c("18 - 34 Years", "35 - 44 Years", "45 - 54 Years", "55 - 64 Years", "65+ Years"), labels = c("1", "2", "3", "4", "5"))
+tra_feat$education<-factor(tra_feat$education, levels= c("< 12 Years", "12 Years", "College Graduate", "Some College"), labels = c("1", "2", "3", "4"))
+tra_feat$race<-factor(tra_feat$race, levels= c("Black", "Hispanic", "Other or Multiple", "White"), labels = c("1", "2", "3", "4"))
+tra_feat$sex<-factor(tra_feat$sex, levels= c("Female", "Male"), labels = c("1", "2"))
+tra_feat$income_poverty<-factor(tra_feat$income_poverty, levels= c("<= $75,000, Above Poverty", "> $75,000", "Below Poverty"), labels = c("1", "2", "3"))
+tra_feat$marital_status<-factor(tra_feat$marital_status, levels= c("Married", "Not Married"), labels = c("1", "2"))
+tra_feat$rent_or_own<-factor(tra_feat$rent_or_own, levels= c("Own", "Rent"), labels = c("1", "2"))
+tra_feat$employment_status<-factor(tra_feat$employment_status, levels= c("Employed", "Not in Labor Force", "Unemployed"), labels = c("1", "2", "3"))
+tra_feat$hhs_geo_region<-factor(tra_feat$hhs_geo_region, levels= c("atmpeygn", "bhuqouqj", "dqpwygqj", "fpwskwrf", "kbazzjca", "lrircsnp", "lzgpxyit", "mlyzmhmf", "oxchjgsf", "qufhixun"), labels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"))
+tra_feat$census_msa<-factor(tra_feat$census_msa, levels= c("MSA, Not Principle  City", "MSA, Principle City", "Non-MSA"), labels = c("1", "2", "3"))
+sum(is.na(tra_feat))
+```
+
+Por último, procedemos a normalizar los datos:
+```{r}
+tra_feat <- tra_feat[,c(2:ncol(tra_feat))] %>% mutate_if(is.numeric, scale, center = TRUE, scale = TRUE)
+tra_feat[,c(21:30)]<-sapply(c(21:30), function(x) scale(as.numeric(tra_feat[,x])))
+```
+
+Ya que no tenemos NA y las variables categoricas han sido modificadas a numerica, procedemos a dividir los datos para entrenar el modelo kNN:
+```{r}
+tra_lab$h1n1_vaccine <- factor(tra_lab$h1n1_vaccine)
+tra_lab$seasonal_vaccine <- factor(tra_lab$seasonal_vaccine)
+shuffle_ds = sample(dim(tra_feat)[1])
+pct90 = (dim(tra_feat)[1] * 90) %/% 100
+
+tra_feat_sam = tra_feat[shuffle_ds[1:pct90], ]
+tra_lab_sam = tra_lab[shuffle_ds[1:pct90], -1]
+
+tst_feat_sam = tra_feat[shuffle_ds[(pct90+1):dim(tra_feat)[1]], ]
+tst_lab_sam = tra_lab[shuffle_ds[(pct90+1):dim(tra_lab)[1]], -1]
+```
+
+
+### Implementación de kNN para la vacuna h1n1
+
+Probamos kNN usando la distancia euclídea para el modelo, con la funcion knn de caret:
+```{r}
+library(caret)
+library(AUC)
+Fit_1 = train(tra_feat_sam, tra_lab_sam$h1n1_vaccine,
+                method = "knn",
+                metric="Accuracy")
+Fit_1
+Fit_1$finalModel
+
+Pred_1 = predict(Fit_1, newdata = tst_feat_sam)
+postResample(pred = Pred_1, obs = tst_lab_sam$h1n1_vaccine)
+
+table(Pred_1,tst_lab_sam$h1n1_vaccine)
+mean(Pred_1==tst_lab_sam$h1n1_vaccine)
+confusionMatrix(table(Pred_1,tst_lab_sam$h1n1_vaccine))
+
+Pred_1_prob = predict(Fit_1, newdata = tst_feat_sam, type = "prob")
+print("AUC: ")
+auc(roc(Pred_1_prob$`1`, tst_lab_sam$h1n1_vaccine))
+Pred_1_prob
+```
+
+Probamos kNN usando la distancia de Minkowski para el modelo, con la funcion kknn de kknn:
+```{r}
+library(kknn)
+Fit_2 = kknn (tra_lab_sam$h1n1_vaccine~., tra_feat_sam , tst_feat_sam , distance = 2)
+
+Pred_2 = predict(Fit_2, newdata = tst_feat_sam)
+postResample(pred = Pred_2, obs = tst_lab_sam$h1n1_vaccine)
+
+table(Pred_2,tst_lab_sam$h1n1_vaccine)
+mean(Pred_2==tst_lab_sam$h1n1_vaccine)
+confusionMatrix(table(Pred_2,tst_lab_sam$h1n1_vaccine))
+
+Pred_2_prob = predict(Fit_2, newdata = tst_feat_sam, type = "prob")
+Pred_2_prob <- as.data.frame(Pred_2_prob)
+print("AUC: ")
+auc(roc(Pred_2_prob$`1`, tst_lab_sam$h1n1_vaccine))
+```
+
+Probamos kNN usando la distancia de Manhattan para el modelo, con la funcion kknn de kknn:
+```{r}
+library(kknn)
+Fit_3 = kknn (tra_lab_sam$h1n1_vaccine~., tra_feat_sam , tst_feat_sam , distance = 1)
+
+Pred_3 = predict(Fit_3, newdata = tst_feat_sam)
+postResample(pred = Pred_3, obs = tst_lab_sam$h1n1_vaccine)
+
+table(Pred_3,tst_lab_sam$h1n1_vaccine)
+mean(Pred_3==tst_lab_sam$h1n1_vaccine)
+confusionMatrix(table(Pred_3,tst_lab_sam$h1n1_vaccine))
+
+Pred_3_prob = predict(Fit_3, newdata = tst_feat_sam, type = "prob")
+Pred_3_prob <- as.data.frame(Pred_3_prob)
+print("AUC: ")
+auc(roc(Pred_3_prob$`1`, tst_lab_sam$h1n1_vaccine))
+```
+
+Observamos que el mejor resultado nos lo da el modelo producido por el paquete caret, usando la distancia euclídea.
+
+### Implementación de kNN para la vacuna seasonal
+
+Probamos kNN usando la distancia euclídea para el modelo, con la funcion knn de caret:
+```{r}
+Fit_1 = train(tra_feat_sam, tra_lab_sam$seasonal_vaccine,
+                method = "knn",
+                metric="Accuracy")
+Fit_1
+Fit_1$finalModel
+
+Pred_1 = predict(Fit_1, newdata = tst_feat_sam)
+postResample(pred = Pred_1, obs = tst_lab_sam$seasonal_vaccine)
+
+table(Pred_1,tst_lab_sam$seasonal_vaccine)
+mean(Pred_1==tst_lab_sam$seasonal_vaccine)
+confusionMatrix(table(Pred_1,tst_lab_sam$seasonal_vaccine))
+
+Pred_1_prob = predict(Fit_1, newdata = tst_feat_sam, type = "prob")
+print("AUC: ")
+auc(roc(Pred_1_prob$`1`, tst_lab_sam$seasonal_vaccine))
+Pred_1_prob
+```
+
+Probamos kNN usando la distancia de Minkowski para el modelo, con la funcion kknn de kknn:
+```{r}
+library(kknn)
+Fit_2 = kknn (tra_lab_sam$seasonal_vaccine~., tra_feat_sam , tst_feat_sam , distance = 2)
+
+Pred_2 = predict(Fit_2, newdata = tst_feat_sam)
+postResample(pred = Pred_2, obs = tst_lab_sam$seasonal_vaccine)
+
+table(Pred_2,tst_lab_sam$seasonal_vaccine)
+mean(Pred_2==tst_lab_sam$seasonal_vaccine)
+confusionMatrix(table(Pred_2,tst_lab_sam$seasonal_vaccine))
+
+Pred_2_prob = predict(Fit_2, newdata = tst_feat_sam, type = "prob")
+Pred_2_prob <- as.data.frame(Pred_2_prob)
+print("AUC: ")
+auc(roc(Pred_2_prob$`1`, tst_lab_sam$seasonal_vaccine))
+```
+
+Probamos kNN usando la distancia de Manhattan para el modelo, con la funcion kknn de kknn:
+```{r}
+library(kknn)
+Fit_3 = kknn (tra_lab_sam$seasonal_vaccine~., tra_feat_sam , tst_feat_sam , distance = 1)
+
+Pred_3 = predict(Fit_3, newdata = tst_feat_sam)
+postResample(pred = Pred_3, obs = tst_lab_sam$seasonal_vaccine)
+
+table(Pred_3,tst_lab_sam$seasonal_vaccine)
+mean(Pred_3==tst_lab_sam$seasonal_vaccine)
+confusionMatrix(table(Pred_3,tst_lab_sam$seasonal_vaccine))
+
+Pred_3_prob = predict(Fit_3, newdata = tst_feat_sam, type = "prob")
+Pred_3_prob <- as.data.frame(Pred_3_prob)
+print("AUC: ")
+auc(roc(Pred_3_prob$`1`, tst_lab_sam$seasonal_vaccine))
+```
+
+Para la segunda variable de salida correspondiente a la vacuna seasonal, el mejor modelo de knn es el correspondiente también al producido por el paquete caret con la distancia euclídea.
+
