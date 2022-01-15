@@ -333,7 +333,7 @@ prediction_h1n1_prob = predict(model_h1n1, newdata = test_features_sample, type 
 print("AUC: ")
 auc(roc(prediction_h1n1_prob$`1`, test_labels_sample$h1n1_vaccine))
 ```
-Obtenemos un AUC de 0.7834197 para h1n1
+Obtenemos un AUC de 0.8032192 para h1n1
 
 Veamos el comportamiento del modelo para la clase de seasonal_vaccine con las particiones creadas
 ```{r}
@@ -612,5 +612,5 @@ submission$seasonal_vaccine = prediction_seasonal_prob$X1
 write_csv(submission, "submission_rpart_bin_basic_imput_ensemble.csv")
 ```
 
-La puntuación obtenida en la plataforma es del 0.8254
+La puntuación obtenida en la plataforma es del 0.8286
 

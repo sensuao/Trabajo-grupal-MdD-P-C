@@ -167,7 +167,7 @@ print("AUC_seasonal: ")
 auc(roc((prediction_prob_class$X1+prediction_prob_class$X3)+(1-(prediction_prob_class$X0+prediction_prob_class$X2)), test_labels_sample$seasonal_vaccine))
 ```
 
-Obtenemos un AUC de 0.7431606 para h1n1 y de 0.6752186 para seasonal.
+Obtenemos un AUC de 0.7418937 para h1n1 y de 0.7673829 para seasonal.
 
 Reentrenamos con todos los datos para calcular la probabilidad con los datos de test reales.
 
